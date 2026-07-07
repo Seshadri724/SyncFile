@@ -10,8 +10,23 @@ class LocalTransferEngine(TransferEngine):
         # Create parent directories if they don't exist
         dest_dir = os.path.dirname(dest)
         os.makedirs(dest_dir, exist_ok=True)
-        # shutil.copy2 preserves metadata (mtime, permissions)
-        shutil.copy2(src, dest)
+        
+        if os.path.exists(dest):
+            # Destination exists: perform custom block-level delta sync
+            from app.transfer.delta_sync import (
+                generate_block_signatures,
+                compute_delta,
+                apply_delta
+            )
+            sigs = generate_block_signatures(dest)
+            delta = compute_delta(sigs, src)
+            
+            temp_dest = dest + ".tmp_delta"
+            apply_delta(delta, dest, temp_dest)
+            shutil.copystat(src, dest)
+        else:
+            # New file: full copy
+            shutil.copy2(src, dest)
 
     async def move(self, src: str, dest: str) -> None:
         dest_dir = os.path.dirname(dest)

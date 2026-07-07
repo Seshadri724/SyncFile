@@ -263,3 +263,51 @@ async def test_audit_log_purge():
         records = (await db.execute(stmt)).scalars().all()
         assert len(records) == 1
         assert records[0].file_path == "new.txt"
+
+@pytest.mark.anyio
+async def test_block_delta_sync(tmp_path):
+    from app.transfer.delta_sync import (
+        generate_block_signatures,
+        compute_delta,
+        apply_delta
+    )
+    import os
+    
+    # Create two large matching files with small difference
+    src_file = tmp_path / "source.txt"
+    dest_file = tmp_path / "destination.txt"
+    
+    # 256KB of data split into blocks of 64KB (4 blocks)
+    block_a = b"A" * 65536
+    block_b = b"B" * 65536
+    block_c = b"C" * 65536
+    block_d = b"D" * 65536
+    
+    # Destination has A, B, C, D
+    dest_file.write_bytes(block_a + block_b + block_c + block_d)
+    
+    # Source has A, B_MODIFIED, C, D
+    block_b_mod = b"B" * 32768 + b"X" * 32768
+    src_file.write_bytes(block_a + block_b_mod + block_c + block_d)
+    
+    # 1. Compute Signatures of Dest
+    sigs = generate_block_signatures(str(dest_file), block_size=65536)
+    assert len(sigs) == 4
+    
+    # 2. Compute Delta from Source
+    delta = compute_delta(sigs, str(src_file), block_size=65536)
+    
+    # Ops list should copy block 0, send raw data for block 1, copy block 2, copy block 3
+    assert len(delta) == 4
+    assert delta[0] == ("copy", 0)
+    assert delta[1][0] == "data"
+    assert len(delta[1][1]) == 65536
+    assert delta[2] == ("copy", 2)
+    assert delta[3] == ("copy", 3)
+    
+    # 3. Apply Delta
+    temp_dest = str(dest_file) + ".tmp"
+    apply_delta(delta, str(dest_file), temp_dest, block_size=65536)
+    
+    # Dest file should be rebuilt and matches source
+    assert dest_file.read_bytes() == src_file.read_bytes()
