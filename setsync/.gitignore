@@ -1,0 +1,36 @@
+# Python virtual environments
+.venv/
+venv/
+ENV/
+
+# Python bytecode & cache
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.pytest_cache*
+
+# Local SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Node / React files
+node_modules/
+dist/
+dist-ssr/
+build/
+*.local
+.eslintcache
+
+# SetSync Local Simulators & Temp Trash
+.setsync_trash/
+test_pc_a/
+test_pc_b/
+
+# Operating System & IDE configs
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
