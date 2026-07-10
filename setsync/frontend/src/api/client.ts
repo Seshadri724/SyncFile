@@ -154,3 +154,17 @@ export async function getStaleOrphans(ageDays: number = 180): Promise<any> {
   if (!res.ok) throw new Error("Failed to load stale orphans report");
   return res.json();
 }
+
+export async function queryNaturalLanguage(
+  prompt: string,
+  sourceX: string,
+  sourceY: string
+): Promise<any> {
+  const res = await fetch(`${API_BASE}/query/natural`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({ prompt, source_x: sourceX, source_y: sourceY }),
+  });
+  if (!res.ok) throw new Error("AI query failed");
+  return res.json();
+}

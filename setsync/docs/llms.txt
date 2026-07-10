@@ -1,0 +1,60 @@
+# SetSync MCP Server & API Specification
+
+SetSync is an agent-compatible platform for managing cross-device file synchronization, dynamic comparisons, and duplicate content analytics.
+
+---
+
+## 🛠️ MCP Server Tools
+
+SetSync hosts an stdio-based MCP Server exposing the following tools:
+
+### Read Tools
+
+1. `list_sources()`
+   - Description: Retrieves all active registered sources (devices and cloud remotes).
+   - Returns: List of `{id, name, status, kind, roots}`.
+
+2. `query_files(source_x, source_y, view_type, q, min_size, max_size, limit, offset)`
+   - Description: Queries comparison files.
+   - Arguments:
+     - `source_x` (str, required): Left source device ID.
+     - `source_y` (str, required): Right source device ID.
+     - `view_type` (str): 'union', 'intersection', 'only_a', 'only_b', 'conflicts'.
+     - `q` (str, optional): Substring search.
+     - `min_size`, `max_size` (int, optional): Size in bytes.
+
+3. `compare_sources(source_x, source_y)`
+   - Description: High-level comparison summary counts.
+
+4. `find_duplicates()`
+   - Description: Lists duplicate content groups across the network.
+
+5. `get_audit_log(limit, offset)`
+   - Description: Lists recent completed and undone sync actions.
+
+### Mutate Tools (Safety Guardrails)
+
+SetSync enforces a **Plan-Before-Act** pattern for modifications.
+
+1. `dry_run_action(file_path, source, destination, action_type)`
+   - Description: Pre-flight check.
+   - Returns: Overwrite preview and a cryptographic `validation_token`.
+   - **Mandatory First Step**: You MUST call this tool before executing any mutation.
+
+2. `execute_action(file_path, source, destination, action_type, validation_token, force)`
+   - Description: Enqueue sync copy, move, or delete jobs.
+   - Arguments:
+     - `validation_token` (str, required): The token returned by `dry_run_action` for this specific path.
+   - **Hard Safety Block**: Calls without a prior matching dry-run token are blocked by the policy engine. Deleting unique content hashes is blocked unless `force=true`.
+
+3. `revert_action(action_id)`
+   - Description: Undoes a completed sync action.
+
+---
+
+## 💬 Natural-Language Query API
+
+FastAPI Endpoint: `POST /query/natural`
+- Input: `{"prompt": "User question...", "source_x": "...", "source_y": "..."}`
+- Output: Standardized sets search parameters, summary, and matching file lists.
+- Translation runs locally via regex fallback, or utilizes Gemini LLM if `GEMINI_API_KEY` environment variable is defined.

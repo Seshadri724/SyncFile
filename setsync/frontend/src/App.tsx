@@ -12,7 +12,8 @@ import {
   getAuditLogs,
   testConnection,
   getDuplicates,
-  getStaleOrphans
+  getStaleOrphans,
+  queryNaturalLanguage
 } from "./api/client";
 import type { 
   UnifiedFileRow, 
@@ -74,6 +75,10 @@ export default function App() {
   const [staleOrphans, setStaleOrphans] = useState<any[]>([]);
   const [staleAgeDays, setStaleAgeDays] = useState<number>(180);
   const [loadingStale, setLoadingStale] = useState(false);
+
+  // AI Search states
+  const [aiQueryText, setAiQueryText] = useState("");
+  const [activeAiFilters, setActiveAiFilters] = useState<any>(null);
 
   // Loading States
   const [loadingFiles, setLoadingFiles] = useState(false);
@@ -155,7 +160,19 @@ export default function App() {
     if (!sourceX || !sourceY) return;
     setLoadingFiles(true);
     try {
-      const data = await getSetsView(sourceX, sourceY, viewType, searchQuery || undefined);
+      let data;
+      if (activeAiFilters) {
+        data = await getSetsView(
+          sourceX,
+          sourceY,
+          activeAiFilters.view_type || "union",
+          activeAiFilters.q || undefined,
+          activeAiFilters.min_size !== null && activeAiFilters.min_size !== undefined ? activeAiFilters.min_size : undefined,
+          activeAiFilters.max_size !== null && activeAiFilters.max_size !== undefined ? activeAiFilters.max_size : undefined
+        );
+      } else {
+        data = await getSetsView(sourceX, sourceY, viewType, searchQuery || undefined);
+      }
       setFiles(data.files);
       setSummary(data.summary);
     } catch (e) {
@@ -215,7 +232,7 @@ export default function App() {
     } else if (activeTab === "stale") {
       fetchStaleOrphans();
     }
-  }, [sourceX, sourceY, viewType, activeTab, isAuthenticated]);
+  }, [sourceX, sourceY, viewType, activeTab, isAuthenticated, activeAiFilters]);
 
   // Re-fetch stale if age days changes
   useEffect(() => {
@@ -260,6 +277,26 @@ export default function App() {
     } finally {
       setRecomputing(false);
     }
+  };
+
+  const handleAiQuery = async () => {
+    if (!aiQueryText.trim() || !sourceX || !sourceY) return;
+    setLoadingFiles(true);
+    try {
+      const res = await queryNaturalLanguage(aiQueryText, sourceX, sourceY);
+      setActiveAiFilters(res.filters);
+      setFiles(res.files);
+      setSummary(res.summary);
+    } catch (e) {
+      alert("AI Query translation failed: " + e);
+    } finally {
+      setLoadingFiles(false);
+    }
+  };
+
+  const handleClearAiFilters = () => {
+    setActiveAiFilters(null);
+    setAiQueryText("");
   };
 
   const handleOpenDryRun = async (row: UnifiedFileRow, type: "copy" | "move") => {
@@ -652,6 +689,49 @@ export default function App() {
                   </select>
                 </div>
               </div>
+            </section>
+
+            {/* AI Search Assistant Panel */}
+            <section className="glass-card" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "1.1rem" }}>
+                <Sparkles size={18} style={{ color: "var(--accent-cyan)" }} /> Ask AI Search Assistant
+              </h3>
+              
+              <div style={{ display: "flex", gap: "1rem" }}>
+                <input 
+                  type="text" 
+                  className="search-input" 
+                  style={{ flex: 1, height: "42px", paddingLeft: "1rem", borderRadius: "8px" }}
+                  placeholder="e.g. Find files larger than 1MB on Left PC..."
+                  value={aiQueryText}
+                  onChange={(e) => setAiQueryText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleAiQuery(); }}
+                />
+                <button 
+                  className="btn btn-primary"
+                  style={{ height: "42px", display: "flex", alignItems: "center", gap: "0.35rem" }}
+                  onClick={handleAiQuery}
+                  disabled={loadingFiles || !aiQueryText.trim()}
+                >
+                  <Sparkles size={16} />
+                  Ask AI
+                </button>
+              </div>
+
+              {activeAiFilters && (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: "rgba(0,188,212,0.1)", padding: "0.5rem 1rem", borderRadius: "6px" }}>
+                  <span style={{ fontSize: "0.85rem", color: "var(--accent-cyan)" }}>
+                    Active AI Filters: <strong>{JSON.stringify(activeAiFilters)}</strong>
+                  </span>
+                  <button 
+                    className="btn btn-sm btn-secondary" 
+                    onClick={handleClearAiFilters}
+                    style={{ minHeight: "26px", padding: "0.25rem 0.5rem" }}
+                  >
+                    Clear AI Search
+                  </button>
+                </div>
+              )}
             </section>
 
             {/* Live Summary Strip */}

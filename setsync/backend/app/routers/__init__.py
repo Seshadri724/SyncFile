@@ -5,6 +5,7 @@ from app.routers.audit import router as audit_router
 from app.routers.sources import router as sources_router
 from app.routers.jobs import router as jobs_router
 from app.routers.analysis import router as analysis_router
+from app.routers.query import router as query_router
 
 __all__ = [
     "inventory_router",
@@ -14,4 +15,5 @@ __all__ = [
     "sources_router",
     "jobs_router",
     "analysis_router",
+    "query_router",
 ]
