@@ -2,10 +2,27 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load agent-specific environment variables if they exist
 load_dotenv(Path(__file__).parent / ".env")
 
-CORE_SERVICE_URL = os.getenv("CORE_SERVICE_URL", "http://localhost:8000")
-API_TOKEN = os.getenv("API_TOKEN", "setsync_secret_token_123")
-PC_ID = os.getenv("PC_ID", "A") # Default to PC-A
 AGENT_DB_PATH = os.getenv("AGENT_DB_PATH", "./agent_cache.db")
+
+def get_agent_config(key: str, default: str = "") -> str:
+    """Helper to retrieve configuration value from agent database config table first, falling back to environment variables."""
+    try:
+        from agent.db import get_config
+        val = get_config(key)
+        if val is not None:
+            return val
+    except Exception:
+        pass
+    
+    # Environment fallbacks
+    env_mapping = {
+        "core_url": "CORE_SERVICE_URL",
+        "api_token": "API_TOKEN",
+        "source_id": "SOURCE_ID",
+        "agent_key": "AGENT_KEY",
+        "roots": "ROOT_PATHS"
+    }
+    env_key = env_mapping.get(key, key.upper())
+    return os.getenv(env_key, default)

@@ -13,12 +13,17 @@ router = APIRouter(
 )
 
 @router.post("/compute", response_model=SetSummaryStrip)
-async def trigger_recompute(db: AsyncSession = Depends(get_db)):
-    # With direct SQL queries, recomputing is instant. We return the live summary.
-    return await get_summary_from_db(db)
+async def trigger_recompute(
+    source_x: str = Query(..., description="Source X (left device ID)"),
+    source_y: str = Query(..., description="Source Y (right device ID)"),
+    db: AsyncSession = Depends(get_db)
+):
+    return await get_summary_from_db(db, source_x, source_y)
 
 @router.get("/view", response_model=SetViewResponse)
 async def view_sets(
+    source_x: str = Query(..., description="Source X (left device ID)"),
+    source_y: str = Query(..., description="Source Y (right device ID)"),
     type: str = Query("union", description="Type of view: union, intersection, only_a, only_b, conflicts"),
     q: Optional[str] = Query(None, description="Fuzzy match on filename or path"),
     min_size: Optional[int] = Query(None, description="Minimum size in bytes"),
@@ -28,9 +33,11 @@ async def view_sets(
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        summary = await get_summary_from_db(db)
+        summary = await get_summary_from_db(db, source_x, source_y)
         files = await get_computed_sets_from_db(
             db, 
+            source_x=source_x,
+            source_y=source_y,
             view_type=type, 
             q=q, 
             min_size=min_size, 
@@ -44,11 +51,13 @@ async def view_sets(
 
 @router.get("/search", response_model=List[UnifiedFileRow])
 async def search_files(
+    source_x: str = Query(..., description="Source X (left device ID)"),
+    source_y: str = Query(..., description="Source Y (right device ID)"),
     q: str = Query(..., description="Search query"),
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        # Search across all union records
-        return await get_computed_sets_from_db(db, view_type="union", q=q)
+        # Search across all union records for these two sources
+        return await get_computed_sets_from_db(db, source_x=source_x, source_y=source_y, view_type="union", q=q)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

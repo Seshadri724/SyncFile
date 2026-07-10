@@ -5,7 +5,7 @@ from app.schemas.sets import UnifiedFileRow, SetSummaryStrip
 from typing import List, Optional, Dict, Any
 import datetime
 
-# SQL Queries defining each set logic view
+# SQL Queries defining each set logic view, parameterized by source_x and source_y
 
 QUERY_BOTH_PATH = """
 SELECT 
@@ -20,7 +20,7 @@ SELECT
   b.mtime as mtime_b
 FROM file_records a
 JOIN file_records b ON a.relative_path = b.relative_path
-WHERE a.source_pc = 'A' AND b.source_pc = 'B' AND a.hash_sha256 = b.hash_sha256
+WHERE a.source_id = :source_x AND b.source_id = :source_y AND a.hash_sha256 = b.hash_sha256
 """
 
 QUERY_BOTH_HASH = """
@@ -36,9 +36,9 @@ SELECT
   b.mtime as mtime_b
 FROM file_records a
 JOIN file_records b ON a.hash_sha256 = b.hash_sha256
-WHERE a.source_pc = 'A' AND b.source_pc = 'B' AND a.relative_path != b.relative_path
-  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_pc = 'B' AND relative_path = a.relative_path)
-  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_pc = 'A' AND relative_path = b.relative_path)
+WHERE a.source_id = :source_x AND b.source_id = :source_y AND a.relative_path != b.relative_path
+  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_id = :source_y AND relative_path = a.relative_path)
+  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_id = :source_x AND relative_path = b.relative_path)
 """
 
 QUERY_CONFLICT = """
@@ -54,7 +54,7 @@ SELECT
   b.mtime as mtime_b
 FROM file_records a
 JOIN file_records b ON a.relative_path = b.relative_path
-WHERE a.source_pc = 'A' AND b.source_pc = 'B' AND a.hash_sha256 != b.hash_sha256
+WHERE a.source_id = :source_x AND b.source_id = :source_y AND a.hash_sha256 != b.hash_sha256
 """
 
 QUERY_ONLY_A = """
@@ -69,9 +69,9 @@ SELECT
   a.mtime as mtime_a,
   NULL as mtime_b
 FROM file_records a
-WHERE a.source_pc = 'A'
-  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_pc = 'B' AND relative_path = a.relative_path)
-  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_pc = 'B' AND hash_sha256 = a.hash_sha256)
+WHERE a.source_id = :source_x
+  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_id = :source_y AND relative_path = a.relative_path)
+  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_id = :source_y AND hash_sha256 = a.hash_sha256)
 """
 
 QUERY_ONLY_B = """
@@ -86,9 +86,9 @@ SELECT
   NULL as mtime_a,
   b.mtime as mtime_b
 FROM file_records b
-WHERE b.source_pc = 'B'
-  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_pc = 'A' AND relative_path = b.relative_path)
-  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_pc = 'A' AND hash_sha256 = b.hash_sha256)
+WHERE b.source_id = :source_y
+  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_id = :source_x AND relative_path = b.relative_path)
+  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_id = :source_x AND hash_sha256 = b.hash_sha256)
 """
 
 # Helper to choose base query depending on view type
@@ -124,7 +124,6 @@ def _parse_db_datetime(val: Any) -> Optional[datetime.datetime]:
         val_str = str(val).replace(" ", "T")
         if val_str.endswith("Z"):
             val_str = val_str[:-1]
-        # Drop microsecond timezone offset indicators if present to make parsing clean
         if "+" in val_str:
             val_str = val_str.split("+")[0]
         return datetime.datetime.fromisoformat(val_str)
@@ -133,6 +132,8 @@ def _parse_db_datetime(val: Any) -> Optional[datetime.datetime]:
 
 async def get_computed_sets_from_db(
     db: AsyncSession,
+    source_x: str,
+    source_y: str,
     view_type: str = "union",
     q: Optional[str] = None,
     min_size: Optional[int] = None,
@@ -144,7 +145,7 @@ async def get_computed_sets_from_db(
     
     # Wrap in filter wrapper
     wrapper_sql = f"SELECT * FROM ({base_sql}) WHERE 1=1"
-    params: Dict[str, Any] = {}
+    params: Dict[str, Any] = {"source_x": source_x, "source_y": source_y}
     
     if q:
         # Support simple wildcard search
@@ -190,20 +191,22 @@ async def get_computed_sets_from_db(
         
     return file_rows
 
-async def get_summary_from_db(db: AsyncSession) -> SetSummaryStrip:
+async def get_summary_from_db(db: AsyncSession, source_x: str, source_y: str) -> SetSummaryStrip:
     # Run cheap COUNT queries
     sql_intersection = f"SELECT COUNT(*) FROM ({QUERY_BOTH_PATH}) UNION ALL SELECT COUNT(*) FROM ({QUERY_BOTH_HASH})"
     sql_conflict = f"SELECT COUNT(*) FROM ({QUERY_CONFLICT})"
     sql_only_a = f"SELECT COUNT(*) FROM ({QUERY_ONLY_A})"
     sql_only_b = f"SELECT COUNT(*) FROM ({QUERY_ONLY_B})"
     
+    params = {"source_x": source_x, "source_y": source_y}
+    
     # Exec integrations
-    intersection_rows = (await db.execute(text(sql_intersection))).scalars().all()
+    intersection_rows = (await db.execute(text(sql_intersection), params)).scalars().all()
     intersection_count = sum(intersection_rows)
     
-    conflict_count = (await db.execute(text(sql_conflict))).scalar_one()
-    only_a_count = (await db.execute(text(sql_only_a))).scalar_one()
-    only_b_count = (await db.execute(text(sql_only_b))).scalar_one()
+    conflict_count = (await db.execute(text(sql_conflict), params)).scalar_one()
+    only_a_count = (await db.execute(text(sql_only_a), params)).scalar_one()
+    only_b_count = (await db.execute(text(sql_only_b), params)).scalar_one()
     
     union_count = intersection_count + conflict_count + only_a_count + only_b_count
     

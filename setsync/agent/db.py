@@ -15,6 +15,12 @@ def init_agent_db():
             scanned_at TIMESTAMP
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS config (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -49,7 +55,23 @@ def update_scanned_time(path: str, scanned_at: datetime.datetime):
 def delete_stale_cache(scan_start: datetime.datetime):
     conn = sqlite3.connect(AGENT_DB_PATH)
     cursor = conn.cursor()
-    # Delete entries that were not updated in this scan run
     cursor.execute("DELETE FROM file_cache WHERE datetime(scanned_at) < datetime(?)", (scan_start.isoformat(),))
+    conn.commit()
+    conn.close()
+
+def get_config(key: str) -> Optional[str]:
+    conn = sqlite3.connect(AGENT_DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT value FROM config WHERE key = ?", (key,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return row[0]
+    return None
+
+def set_config(key: str, value: str):
+    conn = sqlite3.connect(AGENT_DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, value))
     conn.commit()
     conn.close()

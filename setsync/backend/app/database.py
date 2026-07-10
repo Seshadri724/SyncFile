@@ -23,5 +23,7 @@ async def init_db():
     import app.models.file_record
     import app.models.action_record
     import app.models.undo_record
+    import app.models.source
+    import app.models.job
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

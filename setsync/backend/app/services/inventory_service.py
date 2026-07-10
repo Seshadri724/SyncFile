@@ -1,19 +1,20 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func
 from app.models.file_record import FileRecord
+from app.models.source import Source
 from app.schemas.inventory import InventoryUpload, InventoryDelta
 from typing import List, Optional
 import datetime
 
 async def handle_inventory_upload(db: AsyncSession, upload: InventoryUpload) -> int:
     try:
-        # Delete existing records for this source PC
-        await db.execute(delete(FileRecord).where(FileRecord.source_pc == upload.source_pc))
+        # Delete existing records for this source
+        await db.execute(delete(FileRecord).where(FileRecord.source_id == upload.source_id))
         
         # Insert new records
         for item in upload.files:
             db_item = FileRecord(
-                source_pc=upload.source_pc,
+                source_id=upload.source_id,
                 path=item.path,
                 relative_path=item.relative_path,
                 size_bytes=item.size_bytes,
@@ -30,9 +31,9 @@ async def handle_inventory_upload(db: AsyncSession, upload: InventoryUpload) -> 
 
 async def handle_inventory_delta(db: AsyncSession, delta: InventoryDelta) -> None:
     try:
-        # Search for existing record by relative path on source PC
+        # Search for existing record by relative path on source
         stmt = select(FileRecord).where(
-            FileRecord.source_pc == delta.source_pc,
+            FileRecord.source_id == delta.source_id,
             FileRecord.relative_path == delta.file.relative_path
         )
         result = await db.execute(stmt)
@@ -49,7 +50,7 @@ async def handle_inventory_delta(db: AsyncSession, delta: InventoryDelta) -> Non
                 existing.hash_sha256 = delta.file.hash_sha256
             else:
                 db_item = FileRecord(
-                    source_pc=delta.source_pc,
+                    source_id=delta.source_id,
                     path=delta.file.path,
                     relative_path=delta.file.relative_path,
                     size_bytes=delta.file.size_bytes,
@@ -62,31 +63,33 @@ async def handle_inventory_delta(db: AsyncSession, delta: InventoryDelta) -> Non
         await db.rollback()
         raise e
 
-async def get_all_records(db: AsyncSession, source_pc: Optional[str] = None) -> List[FileRecord]:
+async def get_all_records(db: AsyncSession, source_id: Optional[str] = None) -> List[FileRecord]:
     stmt = select(FileRecord)
-    if source_pc:
-        stmt = stmt.where(FileRecord.source_pc == source_pc)
+    if source_id:
+        stmt = stmt.where(FileRecord.source_id == source_id)
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
 async def get_inventory_status(db: AsyncSession):
-    # Counts
-    stmt_a = select(func.count(FileRecord.id)).where(FileRecord.source_pc == "A")
-    stmt_b = select(func.count(FileRecord.id)).where(FileRecord.source_pc == "B")
+    # Query all active sources
+    result = await db.execute(select(Source))
+    sources = result.scalars().all()
     
-    count_a = (await db.execute(stmt_a)).scalar_one()
-    count_b = (await db.execute(stmt_b)).scalar_one()
-    
-    # Last scan time
-    stmt_time_a = select(func.max(FileRecord.scanned_at)).where(FileRecord.source_pc == "A")
-    stmt_time_b = select(func.max(FileRecord.scanned_at)).where(FileRecord.source_pc == "B")
-    
-    time_a = (await db.execute(stmt_time_a)).scalar()
-    time_b = (await db.execute(stmt_time_b)).scalar()
-    
-    return {
-        "pc_a_count": count_a,
-        "pc_b_count": count_b,
-        "pc_a_last_scan": time_a.isoformat() if time_a else None,
-        "pc_b_last_scan": time_b.isoformat() if time_b else None,
-    }
+    source_statuses = []
+    for s in sources:
+        # Get count of file records for this source
+        count_stmt = select(func.count(FileRecord.id)).where(FileRecord.source_id == s.id)
+        count = (await db.execute(count_stmt)).scalar_one()
+        
+        # Get max scanned_at
+        max_scan_stmt = select(func.max(FileRecord.scanned_at)).where(FileRecord.source_id == s.id)
+        max_scan = (await db.execute(max_scan_stmt)).scalar()
+        
+        source_statuses.append({
+            "source_id": s.id,
+            "name": s.name,
+            "count": count,
+            "last_scan": max_scan.isoformat() if max_scan else None
+        })
+        
+    return {"sources": source_statuses}

@@ -4,7 +4,7 @@ export interface UnifiedFileRow {
   relative_path: string;
   size_bytes: number;
   hash_sha256: string;
-  location: "A" | "B" | "Both" | "Conflict";
+  location: string; // e.g. "A" | "B" | "Both" | "Conflict" (representing left and right selected sources)
   path_a?: string;
   path_b?: string;
   mtime_a?: string;
@@ -28,10 +28,10 @@ export interface SetViewResponse {
 export interface ActionResponse {
   id: string;
   timestamp: string;
-  action_type: "copy" | "move" | "sync" | "undo";
+  action_type: string; // "copy" | "move" | "sync" | "undo"
   file_path: string;
-  source: "A" | "B";
-  destination: "A" | "B";
+  source: string;
+  destination: string;
   status: "pending" | "in_progress" | "completed" | "failed" | "undone";
   triggered_by: "ui" | "cli" | "api";
   dry_run_preview?: any;
@@ -51,9 +51,13 @@ export interface DryRunResponse {
   message: string;
 }
 
+export interface SourceStatus {
+  source_id: string;
+  name: string;
+  count: number;
+  last_scan?: string;
+}
+
 export interface InventoryStatus {
-  pc_a_count: number;
-  pc_b_count: number;
-  pc_a_last_scan?: string;
-  pc_b_last_scan?: string;
+  sources: SourceStatus[];
 }

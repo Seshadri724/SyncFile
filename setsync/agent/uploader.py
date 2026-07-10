@@ -4,36 +4,46 @@ import hmac
 import hashlib
 import time
 from typing import List, Dict, Any
-from agent.config import CORE_SERVICE_URL, API_TOKEN, PC_ID
+from agent.config import get_agent_config
 
-def upload_inventory_data(files: List[Dict[str, Any]], pc_id: str = None) -> Dict[str, Any]:
-    target_pc = pc_id or PC_ID
-    url = f"{CORE_SERVICE_URL.rstrip('/')}/inventory/upload"
+def get_auth_headers(payload_data: str = None) -> Dict[str, str]:
+    source_id = get_agent_config("source_id")
+    agent_key = get_agent_config("agent_key")
+    
+    if source_id and agent_key:
+        return {
+            "X-SetSync-Source-ID": source_id,
+            "X-SetSync-Agent-Key": agent_key,
+            "Content-Type": "application/json"
+        }
+    else:
+        master_token = get_agent_config("api_token", "setsync_secret_token_123")
+        timestamp = str(int(time.time()))
+        message = f"{timestamp}.{payload_data or ''}"
+        sig = hmac.new(
+            master_token.encode("utf-8"),
+            message.encode("utf-8"),
+            hashlib.sha256
+        ).hexdigest()
+        return {
+            "X-SetSync-Timestamp": timestamp,
+            "X-SetSync-Signature": sig,
+            "Content-Type": "application/json"
+        }
+
+def upload_inventory_data(files: List[Dict[str, Any]], source_id_arg: str = None) -> Dict[str, Any]:
+    core_url = get_agent_config("core_url", "http://localhost:8000")
+    source_id = source_id_arg or get_agent_config("source_id")
+    
+    url = f"{core_url.rstrip('/')}/inventory/upload"
     
     payload = {
-        "source_pc": target_pc,
+        "source_id": source_id,
         "files": files
     }
     
-    # Standardize JSON formatting for request signing
     json_data = json.dumps(payload, separators=(',', ':'))
-    timestamp = str(int(time.time()))
-    
-    # Message to sign: timestamp + "." + request_body
-    message = f"{timestamp}.{json_data}"
-    
-    # Compute signature using shared secret API_TOKEN
-    sig = hmac.new(
-        API_TOKEN.encode("utf-8"),
-        message.encode("utf-8"),
-        hashlib.sha256
-    ).hexdigest()
-    
-    headers = {
-        "X-SetSync-Timestamp": timestamp,
-        "X-SetSync-Signature": sig,
-        "Content-Type": "application/json"
-    }
+    headers = get_auth_headers(json_data)
     
     try:
         response = requests.post(url, data=json_data, headers=headers, timeout=60)
@@ -45,31 +55,20 @@ def upload_inventory_data(files: List[Dict[str, Any]], pc_id: str = None) -> Dic
             print(f"Response: {e.response.text}")
         raise e
 
-def upload_inventory_delta(action: str, file_item: Dict[str, Any], pc_id: str = None) -> Dict[str, Any]:
-    target_pc = pc_id or PC_ID
-    url = f"{CORE_SERVICE_URL.rstrip('/')}/inventory/delta"
+def upload_inventory_delta(action: str, file_item: Dict[str, Any], source_id_arg: str = None) -> Dict[str, Any]:
+    core_url = get_agent_config("core_url", "http://localhost:8000")
+    source_id = source_id_arg or get_agent_config("source_id")
+    
+    url = f"{core_url.rstrip('/')}/inventory/delta"
     
     payload = {
-        "source_pc": target_pc,
+        "source_id": source_id,
         "action": action,
         "file": file_item
     }
     
     json_data = json.dumps(payload, separators=(',', ':'))
-    timestamp = str(int(time.time()))
-    message = f"{timestamp}.{json_data}"
-    
-    sig = hmac.new(
-        API_TOKEN.encode("utf-8"),
-        message.encode("utf-8"),
-        hashlib.sha256
-    ).hexdigest()
-    
-    headers = {
-        "X-SetSync-Timestamp": timestamp,
-        "X-SetSync-Signature": sig,
-        "Content-Type": "application/json"
-    }
+    headers = get_auth_headers(json_data)
     
     try:
         response = requests.patch(url, data=json_data, headers=headers, timeout=30)

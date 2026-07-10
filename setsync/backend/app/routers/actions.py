@@ -15,10 +15,12 @@ router = APIRouter(
 @router.post("/dry-run", response_model=DryRunResponse)
 async def dry_run_action(
     request: ActionRequest,
-    action_type: str = Query("copy", description="Action type: copy or move")
+    action_type: str = Query("copy", description="Action type: copy or move"),
+    db: AsyncSession = Depends(get_db)
 ):
     try:
         preview = await get_dry_run_preview(
+            db=db,
             relative_path=request.file_path,
             source=request.source,
             destination=request.destination,
@@ -61,6 +63,30 @@ async def move_file(request: ActionRequest, db: AsyncSession = Depends(get_db)):
         return action_rec.to_dict()
     except FileNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+@router.post("/delete", response_model=ActionResponse)
+async def delete_file(
+    request: ActionRequest,
+    force: bool = Query(False, description="Force delete unique content hashes"),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        action_rec = await execute_action(
+            db,
+            relative_path=request.file_path,
+            source=request.source,
+            destination=request.destination,
+            action_type="delete",
+            triggered_by=request.triggered_by or "ui",
+            force=force
+        )
+        return action_rec.to_dict()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 

@@ -10,16 +10,19 @@ class FileScanItem(BaseModel):
     hash_sha256: str
 
 class InventoryUpload(BaseModel):
-    source_pc: str  # "A" or "B"
+    source_id: str
     files: List[FileScanItem]
 
+class SourceStatus(BaseModel):
+    source_id: str
+    name: str
+    count: int
+    last_scan: Optional[str] = None
+
 class InventoryStatusResponse(BaseModel):
-    pc_a_count: int
-    pc_b_count: int
-    pc_a_last_scan: Optional[str] = None
-    pc_b_last_scan: Optional[str] = None
+    sources: List[SourceStatus]
 
 class InventoryDelta(BaseModel):
-    source_pc: str  # "A" or "B"
+    source_id: str
     action: str     # "upsert" or "delete"
     file: FileScanItem

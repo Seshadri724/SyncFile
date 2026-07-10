@@ -1,4 +1,8 @@
 import pytest
+import hmac
+import hashlib
+import time
+import json
 from fastapi.testclient import TestClient
 from app.main import app
 from app.config import settings
@@ -7,6 +11,21 @@ from app.config import settings
 def client():
     with TestClient(app) as c:
         yield c
+
+@pytest.fixture(scope="module")
+def sources(client):
+    # Register Source A
+    headers = {"Authorization": f"Bearer {settings.API_TOKEN}"}
+    res_a = client.post("/sources/register", json={"name": "PC-A", "kind": "device", "roots": ["/root_a"]}, headers=headers)
+    assert res_a.status_code == 201
+    source_a = res_a.json()["source"]
+    
+    # Register Source B
+    res_b = client.post("/sources/register", json={"name": "PC-B", "kind": "device", "roots": ["/root_b"]}, headers=headers)
+    assert res_b.status_code == 201
+    source_b = res_b.json()["source"]
+    
+    return {"A": source_a, "B": source_b}
 
 def test_root_route(client):
     response = client.get("/")
@@ -24,20 +43,25 @@ def test_unauthorized_access(client):
     assert response.status_code == 401
     assert "Unauthorized" in response.json()["detail"]
 
-def test_authorized_access(client):
+def test_authorized_access(client, sources):
     headers = {"Authorization": f"Bearer {settings.API_TOKEN}"}
     response = client.get("/inventory/status", headers=headers)
     assert response.status_code == 200
     data = response.json()
-    assert "pc_a_count" in data
-    assert "pc_b_count" in data
+    assert "sources" in data
+    # Ensure source A and B are returned
+    source_ids = [s["source_id"] for s in data["sources"]]
+    assert sources["A"]["id"] in source_ids
+    assert sources["B"]["id"] in source_ids
 
-def test_inventory_upload_and_set_views(client):
+def test_inventory_upload_and_set_views(client, sources):
     headers = {"Authorization": f"Bearer {settings.API_TOKEN}"}
+    source_a_id = sources["A"]["id"]
+    source_b_id = sources["B"]["id"]
     
     # 1. Upload mock inventory for PC A
     pc_a_payload = {
-        "source_pc": "A",
+        "source_id": source_a_id,
         "files": [
             {
                 "path": "/root_a/file1.txt",
@@ -61,7 +85,7 @@ def test_inventory_upload_and_set_views(client):
 
     # 2. Upload mock inventory for PC B
     pc_b_payload = {
-        "source_pc": "B",
+        "source_id": source_b_id,
         "files": [
             {
                 "path": "/root_b/file2.txt",
@@ -86,11 +110,16 @@ def test_inventory_upload_and_set_views(client):
     # 3. View status
     status_response = client.get("/inventory/status", headers=headers)
     assert status_response.status_code == 200
-    assert status_response.json()["pc_a_count"] == 2
-    assert status_response.json()["pc_b_count"] == 2
+    status_data = status_response.json()["sources"]
+    
+    # Map sources
+    status_map = {s["source_id"]: s for s in status_data}
+    assert status_map[source_a_id]["count"] == 2
+    assert status_map[source_b_id]["count"] == 2
 
     # 4. View computed sets
-    sets_response = client.get("/sets/view?type=union", headers=headers)
+    sets_url = f"/sets/view?type=union&source_x={source_a_id}&source_y={source_b_id}"
+    sets_response = client.get(sets_url, headers=headers)
     assert sets_response.status_code == 200
     data = sets_response.json()
     assert data["summary"]["union_count"] == 3  # file1.txt (A), file2.txt (B), conflict.txt (both/conflict)
@@ -98,7 +127,8 @@ def test_inventory_upload_and_set_views(client):
     assert len(data["files"]) == 3
 
     # 5. Filter for conflicts
-    conflicts_response = client.get("/sets/view?type=conflicts", headers=headers)
+    conflicts_url = f"/sets/view?type=conflicts&source_x={source_a_id}&source_y={source_b_id}"
+    conflicts_response = client.get(conflicts_url, headers=headers)
     assert conflicts_response.status_code == 200
     conflicts_data = conflicts_response.json()
     assert conflicts_data["summary"]["conflict_count"] == 1
@@ -106,14 +136,11 @@ def test_inventory_upload_and_set_views(client):
     assert conflicts_data["files"][0]["relative_path"] == "conflict.txt"
     assert conflicts_data["files"][0]["location"] == "Conflict"
 
-def test_hmac_signature_auth(client):
-    import hmac
-    import hashlib
-    import time
-    import json
+def test_hmac_signature_auth(client, sources):
+    source_a_id = sources["A"]["id"]
     
     # 1. Correct signature
-    payload = {"source_pc": "A", "files": []}
+    payload = {"source_id": source_a_id, "files": []}
     json_data = json.dumps(payload, separators=(',', ':'))
     timestamp = str(int(time.time()))
     message = f"{timestamp}.{json_data}"
@@ -129,7 +156,7 @@ def test_hmac_signature_auth(client):
     assert response.status_code == 201
     
     # 2. Tampered payload signature mismatch
-    tampered_data = json.dumps({"source_pc": "B", "files": []}, separators=(',', ':'))
+    tampered_data = json.dumps({"source_id": sources["B"]["id"], "files": []}, separators=(',', ':'))
     response = client.post("/inventory/upload", data=tampered_data, headers=headers)
     assert response.status_code == 401
     
@@ -147,19 +174,16 @@ def test_hmac_signature_auth(client):
     assert response.status_code == 401
     assert "timestamp expired" in response.json()["detail"]
 
-def test_inventory_delta_uploads(client):
-    import hmac
-    import hashlib
-    import time
-    import json
+def test_inventory_delta_uploads(client, sources):
+    source_a_id = sources["A"]["id"]
     
     # 1. Post a base empty scan for PC-A first via bearer token
     base_headers = {"Authorization": f"Bearer {settings.API_TOKEN}"}
-    client.post("/inventory/upload", json={"source_pc": "A", "files": []}, headers=base_headers)
+    client.post("/inventory/upload", json={"source_id": source_a_id, "files": []}, headers=base_headers)
     
     # 2. Perform delta upsert via HMAC-SHA256 signature
     delta_payload = {
-        "source_pc": "A",
+        "source_id": source_a_id,
         "action": "upsert",
         "file": {
             "path": "/root_a/delta_file.txt",
@@ -185,12 +209,13 @@ def test_inventory_delta_uploads(client):
     assert "processed successfully" in response.json()["message"]
     
     # Check that status updates
-    status = client.get("/inventory/status", headers=base_headers).json()
-    assert status["pc_a_count"] == 1
+    status_res = client.get("/inventory/status", headers=base_headers).json()["sources"]
+    status_map = {s["source_id"]: s for s in status_res}
+    assert status_map[source_a_id]["count"] == 1
     
     # 3. Perform delta delete via HMAC-SHA256 signature
     delete_payload = {
-        "source_pc": "A",
+        "source_id": source_a_id,
         "action": "delete",
         "file": {
             "path": "/root_a/delta_file.txt",
@@ -213,8 +238,9 @@ def test_inventory_delta_uploads(client):
     assert del_response.status_code == 200
     
     # Check status updates back to 0
-    status_after = client.get("/inventory/status", headers=base_headers).json()
-    assert status_after["pc_a_count"] == 0
+    status_after = client.get("/inventory/status", headers=base_headers).json()["sources"]
+    status_map_after = {s["source_id"]: s for s in status_after}
+    assert status_map_after[source_a_id]["count"] == 0
 
 @pytest.mark.anyio
 async def test_audit_log_purge():
@@ -271,7 +297,6 @@ async def test_block_delta_sync(tmp_path):
         compute_delta,
         apply_delta
     )
-    import os
     
     # Create two large matching files with small difference
     src_file = tmp_path / "source.txt"
