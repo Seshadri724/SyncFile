@@ -23,6 +23,8 @@ async def view_sets(
     q: Optional[str] = Query(None, description="Fuzzy match on filename or path"),
     min_size: Optional[int] = Query(None, description="Minimum size in bytes"),
     max_size: Optional[int] = Query(None, description="Maximum size in bytes"),
+    limit: int = Query(100, ge=1, le=1000, description="Max files to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
     db: AsyncSession = Depends(get_db)
 ):
     try:
@@ -32,7 +34,9 @@ async def view_sets(
             view_type=type, 
             q=q, 
             min_size=min_size, 
-            max_size=max_size
+            max_size=max_size,
+            limit=limit,
+            offset=offset
         )
         return SetViewResponse(summary=summary, files=files)
     except Exception as e:

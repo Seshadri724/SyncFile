@@ -9,6 +9,9 @@ ENV/
 *$py.class
 .pytest_cache/
 .pytest_cache*
+.coverage
+htmlcov/
+
 
 # Local SQLite databases
 *.db
@@ -27,6 +30,12 @@ build/
 .setsync_trash/
 test_pc_a/
 test_pc_b/
+test_pc_*/
+agent_cache.db
+setsync.db
+.env
+.env.*
+!.env.example
 
 # Operating System & IDE configs
 .vscode/

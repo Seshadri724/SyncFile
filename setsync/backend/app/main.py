@@ -5,6 +5,8 @@ from app.database import init_db, AsyncSessionLocal
 from app.routers import inventory_router, sets_router, actions_router, audit_router
 from app.services import purge_old_audit_logs
 
+from app.config import settings
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize DB tables
@@ -26,10 +28,13 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Parse CORS origins from config
+cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+
 # Enable CORS for frontend clients
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust for production/security as needed
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

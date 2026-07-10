@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:////data/setsync.db
+      - API_TOKEN=setsync_secret_token_123
+      - PC_A_ROOT=/data/test_pc_a
+      - PC_B_ROOT=/data/test_pc_b
+      - TRASH_DIR=/data/.setsync_trash
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173
+    volumes:
+      - setsync-data:/data
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  setsync-data:

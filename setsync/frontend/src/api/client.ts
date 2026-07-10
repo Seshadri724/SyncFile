@@ -2,8 +2,7 @@ import type {
   InventoryStatus, 
   SetViewResponse, 
   DryRunResponse, 
-  ActionResponse, 
-  UnifiedFileRow 
+  ActionResponse 
 } from "../types";
 
 const API_BASE = "http://localhost:8000";

@@ -21,13 +21,11 @@ import {
   Database, 
   Search, 
   RefreshCw, 
-  FolderSync, 
   CheckCircle, 
   AlertTriangle, 
   Undo, 
   History, 
   LayoutDashboard,
-  ArrowRight,
   FileCode,
   HardDrive
 } from "lucide-react";
@@ -56,7 +54,6 @@ export default function App() {
 
   // Loading States
   const [loadingFiles, setLoadingFiles] = useState(false);
-  const [loadingStatus, setLoadingStatus] = useState(false);
   const [recomputing, setRecomputing] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -98,18 +95,14 @@ export default function App() {
 
   // Audit Logs State
   const [auditLogs, setAuditLogs] = useState<ActionResponse[]>([]);
-  const [auditCount, setAuditCount] = useState(0);
 
   // Fetch functions
   const fetchStatus = async () => {
-    setLoadingStatus(true);
     try {
       const data = await getInventoryStatus();
       setInventoryStatus(data);
     } catch (e) {
       console.error(e);
-    } finally {
-      setLoadingStatus(false);
     }
   };
 
@@ -130,7 +123,6 @@ export default function App() {
     try {
       const data = await getAuditLogs();
       setAuditLogs(data.actions);
-      setAuditCount(data.total_count);
     } catch (e) {
       console.error(e);
     }

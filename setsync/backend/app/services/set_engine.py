@@ -37,8 +37,8 @@ SELECT
 FROM file_records a
 JOIN file_records b ON a.hash_sha256 = b.hash_sha256
 WHERE a.source_pc = 'A' AND b.source_pc = 'B' AND a.relative_path != b.relative_path
-  AND a.relative_path NOT IN (SELECT relative_path FROM file_records WHERE source_pc = 'B')
-  AND b.relative_path NOT IN (SELECT relative_path FROM file_records WHERE source_pc = 'A')
+  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_pc = 'B' AND relative_path = a.relative_path)
+  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_pc = 'A' AND relative_path = b.relative_path)
 """
 
 QUERY_CONFLICT = """
@@ -70,8 +70,8 @@ SELECT
   NULL as mtime_b
 FROM file_records a
 WHERE a.source_pc = 'A'
-  AND a.relative_path NOT IN (SELECT relative_path FROM file_records WHERE source_pc = 'B')
-  AND a.hash_sha256 NOT IN (SELECT hash_sha256 FROM file_records WHERE source_pc = 'B')
+  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_pc = 'B' AND relative_path = a.relative_path)
+  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_pc = 'B' AND hash_sha256 = a.hash_sha256)
 """
 
 QUERY_ONLY_B = """
@@ -87,8 +87,8 @@ SELECT
   b.mtime as mtime_b
 FROM file_records b
 WHERE b.source_pc = 'B'
-  AND b.relative_path NOT IN (SELECT relative_path FROM file_records WHERE source_pc = 'A')
-  AND b.hash_sha256 NOT IN (SELECT hash_sha256 FROM file_records WHERE source_pc = 'A')
+  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_pc = 'A' AND relative_path = b.relative_path)
+  AND NOT EXISTS (SELECT 1 FROM file_records WHERE source_pc = 'A' AND hash_sha256 = b.hash_sha256)
 """
 
 # Helper to choose base query depending on view type
@@ -136,7 +136,9 @@ async def get_computed_sets_from_db(
     view_type: str = "union",
     q: Optional[str] = None,
     min_size: Optional[int] = None,
-    max_size: Optional[int] = None
+    max_size: Optional[int] = None,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None
 ) -> List[UnifiedFileRow]:
     base_sql = _get_base_query(view_type)
     
@@ -159,13 +161,19 @@ async def get_computed_sets_from_db(
         
     wrapper_sql += " ORDER BY relative_path ASC"
     
+    if limit is not None:
+        wrapper_sql += " LIMIT :limit"
+        params["limit"] = limit
+        
+    if offset is not None:
+        wrapper_sql += " OFFSET :offset"
+        params["offset"] = offset
+        
     result = await db.execute(text(wrapper_sql), params)
     rows = result.fetchall()
     
     file_rows: List[UnifiedFileRow] = []
     for r in rows:
-        # r behaves like a tuple or mapping
-        # SQLite names: id, relative_path, size_bytes, hash_sha256, location, path_a, path_b, mtime_a, mtime_b
         name = os.path.basename(r.relative_path)
         file_rows.append(UnifiedFileRow(
             id=r.id,

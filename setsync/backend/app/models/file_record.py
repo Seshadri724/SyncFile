@@ -19,6 +19,7 @@ class FileRecord(Base):
         UniqueConstraint('source_pc', 'relative_path', name='_source_pc_relative_path_uc'),
         Index('idx_file_records_hash', 'source_pc', 'hash_sha256'),
         Index('idx_file_records_path', 'source_pc', 'relative_path'),
+        Index('idx_file_records_hash_sha256', 'hash_sha256'),
     )
 
     def to_dict(self):
