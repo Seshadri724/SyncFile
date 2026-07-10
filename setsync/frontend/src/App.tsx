@@ -13,7 +13,14 @@ import {
   testConnection,
   getDuplicates,
   getStaleOrphans,
-  queryNaturalLanguage
+  queryNaturalLanguage,
+  createPlan,
+  getPlans,
+  getPlan,
+  approvePlan,
+  undoPlan,
+  analyzeConflict,
+  getSemanticDuplicates
 } from "./api/client";
 import type { 
   UnifiedFileRow, 
@@ -48,7 +55,7 @@ export default function App() {
   const [loginError, setLoginError] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<"dashboard" | "audit" | "dedupe" | "stale">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "audit" | "dedupe" | "stale" | "plans">("dashboard");
   const [inventoryStatus, setInventoryStatus] = useState<InventoryStatus | null>(null);
   const [sources, setSources] = useState<any[]>([]);
   const [sourceX, setSourceX] = useState<string>("");
@@ -79,6 +86,23 @@ export default function App() {
   // AI Search states
   const [aiQueryText, setAiQueryText] = useState("");
   const [activeAiFilters, setActiveAiFilters] = useState<any>(null);
+
+  // Plans state
+  const [plans, setPlans] = useState<any[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
+  const [loadingPlans, setLoadingPlans] = useState(false);
+  const [draftPlanItems, setDraftPlanItems] = useState<any[]>([]);
+  const [draftPlanName, setDraftPlanName] = useState("");
+
+  // AI Conflict states
+  const [aiConflictLoading, setAiConflictLoading] = useState(false);
+  const [aiConflictRecommendation, setAiConflictRecommendation] = useState<{ recommendation: string; reasoning: string } | null>(null);
+
+  // Semantic Deduplication states
+  const [dedupeMode, setDedupeMode] = useState<"exact" | "semantic">("exact");
+  const [semanticDuplicates, setSemanticDuplicates] = useState<any[]>([]);
+  const [semanticThreshold, setSemanticThreshold] = useState<number>(10);
+  const [loadingSemantic, setLoadingSemantic] = useState(false);
 
   // Loading States
   const [loadingFiles, setLoadingFiles] = useState(false);
@@ -228,11 +252,17 @@ export default function App() {
     if (activeTab === "dashboard") {
       fetchFiles();
     } else if (activeTab === "dedupe") {
-      fetchDuplicates();
+      if (dedupeMode === "exact") {
+        fetchDuplicates();
+      } else {
+        fetchSemanticDedupe();
+      }
     } else if (activeTab === "stale") {
       fetchStaleOrphans();
+    } else if (activeTab === "plans") {
+      fetchPlansList();
     }
-  }, [sourceX, sourceY, viewType, activeTab, isAuthenticated, activeAiFilters]);
+  }, [sourceX, sourceY, viewType, activeTab, isAuthenticated, activeAiFilters, dedupeMode, semanticThreshold]);
 
   // Re-fetch stale if age days changes
   useEffect(() => {
@@ -395,6 +425,124 @@ export default function App() {
       alert("Undo failed: " + e);
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // Plans Management handlers
+  const fetchPlansList = async () => {
+    setLoadingPlans(true);
+    try {
+      const data = await getPlans();
+      setPlans(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingPlans(false);
+    }
+  };
+
+  const handleCreatePlan = async () => {
+    if (!draftPlanName.trim()) {
+      alert("Please enter a plan name.");
+      return;
+    }
+    if (draftPlanItems.length === 0) {
+      alert("Please add at least one item to the plan.");
+      return;
+    }
+    try {
+      await createPlan(draftPlanName, draftPlanItems);
+      setDraftPlanName("");
+      setDraftPlanItems([]);
+      alert("Plan created successfully!");
+      fetchPlansList();
+    } catch (e: any) {
+      alert("Failed to create plan: " + e.message);
+    }
+  };
+
+  const handleSelectPlan = async (id: string) => {
+    try {
+      const data = await getPlan(id);
+      setSelectedPlan(data);
+    } catch (e) {
+      alert("Failed to load plan details.");
+    }
+  };
+
+  const handleApprovePlan = async (id: string) => {
+    setActionLoading(true);
+    try {
+      const run = await approvePlan(id);
+      setSelectedPlan(run);
+      alert(`Plan approved and executed! Status: ${run.status}`);
+      await fetchPlansList();
+    } catch (e: any) {
+      alert("Execution failed: " + e.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleUndoPlan = async (id: string) => {
+    setActionLoading(true);
+    try {
+      const run = await undoPlan(id);
+      setSelectedPlan(run);
+      alert("Plan rolled back successfully!");
+      await fetchPlansList();
+    } catch (e: any) {
+      alert("Undo failed: " + e.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const addToDraftPlan = (file: UnifiedFileRow, actionType: "copy" | "move" | "delete") => {
+    const source = file.location === "A" ? sourceX : sourceY;
+    const destination = source === sourceX ? sourceY : sourceX;
+    const newItem = {
+      action_type: actionType,
+      file_path: file.relative_path,
+      source_id: source,
+      destination_id: destination,
+      sequence: draftPlanItems.length
+    };
+    setDraftPlanItems([...draftPlanItems, newItem]);
+    alert(`Added ${actionType} of ${file.name} to Draft Plan Queue!`);
+  };
+
+  // Semantic Deduplication handler
+  const fetchSemanticDedupe = async () => {
+    setLoadingSemantic(true);
+    try {
+      const data = await getSemanticDuplicates(semanticThreshold);
+      setSemanticDuplicates(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingSemantic(false);
+    }
+  };
+
+  const handleAiConflictAnalysis = async () => {
+    const { row } = conflictModal;
+    if (!row || !sourceX || !sourceY) return;
+    setAiConflictLoading(true);
+    setAiConflictRecommendation(null);
+    try {
+      const rec = await analyzeConflict(
+        row.relative_path,
+        sourceX,
+        sourceY,
+        { size_bytes: row.size_bytes, mtime: row.mtime_a || "", hash_sha256: row.hash_sha256 },
+        { size_bytes: row.size_bytes, mtime: row.mtime_b || "", hash_sha256: row.hash_sha256 }
+      );
+      setAiConflictRecommendation(rec);
+    } catch (e: any) {
+      alert("AI Conflict resolution failed: " + e.message);
+    } finally {
+      setAiConflictLoading(false);
     }
   };
 
@@ -634,6 +782,13 @@ export default function App() {
             >
               <History size={18} />
               Audit Log
+            </button>
+            <button 
+              className={`btn ${activeTab === "plans" ? "btn-primary" : ""}`}
+              onClick={() => { setActiveTab("plans"); fetchPlansList(); }}
+            >
+              <FileCode size={18} />
+              Transaction Plans
             </button>
           </div>
           
@@ -916,13 +1071,20 @@ export default function App() {
                             </span>
                           </td>
                           <td style={{ textAlign: "right" }}>
-                            {file.location === "A" && (
+                             {file.location === "A" && (
                               <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
                                 <button 
                                   className="btn btn-sm btn-primary"
                                   onClick={() => handleOpenDryRun(file, "copy")}
                                 >
                                   Copy to B
+                                </button>
+                                <button 
+                                  className="btn btn-sm btn-secondary"
+                                  onClick={() => addToDraftPlan(file, "copy")}
+                                  style={{ border: "1px dashed var(--accent-cyan)", color: "var(--accent-cyan)" }}
+                                >
+                                  + Plan
                                 </button>
                                 <button 
                                   className="btn btn-sm text-danger"
@@ -939,6 +1101,13 @@ export default function App() {
                                   onClick={() => handleOpenDryRun(file, "copy")}
                                 >
                                   Copy to A
+                                </button>
+                                <button 
+                                  className="btn btn-sm btn-secondary"
+                                  onClick={() => addToDraftPlan(file, "copy")}
+                                  style={{ border: "1px dashed var(--accent-cyan)", color: "var(--accent-cyan)" }}
+                                >
+                                  + Plan
                                 </button>
                                 <button 
                                   className="btn btn-sm text-danger"
@@ -972,7 +1141,7 @@ export default function App() {
           </>
         )}
 
-        {/* Tab 2: Duplicates */}
+         {/* Tab 2: Duplicates */}
         {activeTab === "dedupe" && (
           <section className="glass-card" style={{ gap: "1.5rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -983,7 +1152,7 @@ export default function App() {
                 </p>
               </div>
               
-              {duplicatesReport && (
+              {duplicatesReport && dedupeMode === "exact" && (
                 <div style={{ textAlign: "right" }}>
                   <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Space Reclaimable</span>
                   <div style={{ fontSize: "1.75rem", fontWeight: "700", color: "var(--success)" }}>
@@ -993,59 +1162,141 @@ export default function App() {
               )}
             </div>
 
-            {loadingDedupe ? (
-              <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-secondary)" }}>
-                <RefreshCw size={24} className="animate-spin" style={{ margin: "0 auto 1rem" }} />
-                Analyzing duplicate structures...
-              </div>
-            ) : !duplicatesReport || duplicatesReport.groups.length === 0 ? (
-              <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-                No duplicate groups detected in your inventory! Excellent storage health.
-              </div>
+            <div style={{ display: "flex", gap: "1rem", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "0.75rem" }}>
+              <button 
+                className={`btn btn-sm ${dedupeMode === "exact" ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setDedupeMode("exact")}
+              >
+                Exact Duplicates (SHA-256)
+              </button>
+              <button 
+                className={`btn btn-sm ${dedupeMode === "semantic" ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => { setDedupeMode("semantic"); fetchSemanticDedupe(); }}
+              >
+                Visual Near-Duplicates (dHash)
+              </button>
+            </div>
+
+            {dedupeMode === "exact" ? (
+              loadingDedupe ? (
+                <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-secondary)" }}>
+                  <RefreshCw size={24} className="animate-spin" style={{ margin: "0 auto 1rem" }} />
+                  Analyzing duplicate structures...
+                </div>
+              ) : !duplicatesReport || duplicatesReport.groups.length === 0 ? (
+                <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
+                  No duplicate groups detected in your inventory! Excellent storage health.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                  {duplicatesReport.groups.map((group: any) => (
+                    <div 
+                      key={group.hash_sha256} 
+                      className="glass-card" 
+                      style={{ padding: "1.25rem", backgroundColor: "rgba(255, 255, 255, 0.015)" }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.75rem", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "0.5rem" }}>
+                        <div>
+                          <strong style={{ fontSize: "0.95rem" }}>Hash: {group.hash_sha256.substring(0, 16)}...</strong>
+                          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Duplicate Count: {group.files.length} copies</div>
+                        </div>
+                        <div style={{ fontWeight: 600, color: "var(--accent-cyan)" }}>
+                          {formatSize(group.size_bytes)} each
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                        {group.files.map((file: any) => (
+                          <div 
+                            key={file.id} 
+                            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.5rem", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "6px" }}
+                          >
+                            <div>
+                              <div style={{ fontSize: "0.9rem" }}>{file.path}</div>
+                              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                Device: <strong>{file.source_name}</strong> · Modified: {formatDate(file.mtime)}
+                              </div>
+                            </div>
+
+                            <button 
+                              className="btn btn-sm btn-danger"
+                              onClick={() => handleSafeDelete(file.relative_path, file.source_id)}
+                              style={{ minHeight: "30px", padding: "0.25rem 0.75rem" }}
+                            >
+                              <Trash2 size={13} style={{ marginRight: "0.25rem" }} />
+                              Delete Copy
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-                {duplicatesReport.groups.map((group: any) => (
-                  <div 
-                    key={group.hash_sha256} 
-                    className="glass-card" 
-                    style={{ padding: "1.25rem", backgroundColor: "rgba(255, 255, 255, 0.015)" }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.75rem", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "0.5rem" }}>
-                      <div>
-                        <strong style={{ fontSize: "0.95rem" }}>Hash: {group.hash_sha256.substring(0, 16)}...</strong>
-                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Duplicate Count: {group.files.length} copies</div>
-                      </div>
-                      <div style={{ fontWeight: 600, color: "var(--accent-cyan)" }}>
-                        {formatSize(group.size_bytes)} each
-                      </div>
-                    </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "1rem", backgroundColor: "rgba(255,255,255,0.02)", padding: "0.75rem 1rem", borderRadius: "8px" }}>
+                  <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)", minWidth: "300px" }}>
+                    Hamming Distance Threshold: <strong>{semanticThreshold}</strong> (Lower = more similar)
+                  </span>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="64" 
+                    value={semanticThreshold} 
+                    onChange={(e) => setSemanticThreshold(Number(e.target.value))} 
+                    style={{ flex: 1 }}
+                  />
+                </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                      {group.files.map((file: any) => (
-                        <div 
-                          key={file.id} 
-                          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.5rem", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "6px" }}
-                        >
-                          <div>
-                            <div style={{ fontSize: "0.9rem" }}>{file.path}</div>
-                            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                              Device: <strong>{file.source_name}</strong> · Modified: {formatDate(file.mtime)}
-                            </div>
-                          </div>
-
-                          <button 
-                            className="btn btn-sm btn-danger"
-                            onClick={() => handleSafeDelete(file.relative_path, file.source_id)}
-                            style={{ minHeight: "30px", padding: "0.25rem 0.75rem" }}
-                          >
-                            <Trash2 size={13} style={{ marginRight: "0.25rem" }} />
-                            Delete Copy
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                {loadingSemantic ? (
+                  <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-secondary)" }}>
+                    <RefreshCw size={24} className="animate-spin" style={{ margin: "0 auto 1rem" }} />
+                    Analyzing visual near-duplicates...
                   </div>
-                ))}
+                ) : semanticDuplicates.length === 0 ? (
+                  <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
+                    No visually similar image duplicates detected.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                    {semanticDuplicates.map((group, idx) => (
+                      <div key={idx} className="glass-card" style={{ padding: "1.25rem", backgroundColor: "rgba(255,255,255,0.015)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.75rem", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "0.5rem" }}>
+                          <div>
+                            <strong>Representative Hash: {group.representative_hash.substring(0, 16)}...</strong>
+                            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Duplicate Count: {group.files.length} images</div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                          {group.files.map((file: any) => (
+                            <div 
+                              key={file.id} 
+                              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.5rem", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "6px" }}
+                            >
+                              <div>
+                                <div style={{ fontSize: "0.9rem" }}>{file.path}</div>
+                                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                  Device: <strong>{file.source_name}</strong> · dHash: <code style={{ color: "var(--accent-cyan)" }}>{file.image_hash}</code> · Size: {formatSize(file.size_bytes)}
+                                </div>
+                              </div>
+
+                              <button 
+                                className="btn btn-sm btn-danger"
+                                onClick={() => handleSafeDelete(file.relative_path, file.source_id)}
+                                style={{ minHeight: "30px", padding: "0.25rem 0.75rem" }}
+                              >
+                                <Trash2 size={13} style={{ marginRight: "0.25rem" }} />
+                                Delete Copy
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </section>
@@ -1189,6 +1440,155 @@ export default function App() {
               </table>
             </div>
           </section>
+        )}
+        {/* Tab 5: Transaction Plans View */}
+        {activeTab === "plans" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr", gap: "1.5rem" }}>
+            {/* Left side: List of plans + Create Plan */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+              <section className="glass-card" style={{ gap: "1rem" }}>
+                <h3 style={{ margin: 0, fontSize: "1.1rem" }}>Create New Transaction Plan</h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  <input
+                    type="text"
+                    className="search-input"
+                    placeholder="Plan Name (e.g. PC-A Sync Plan)"
+                    value={draftPlanName}
+                    onChange={(e) => setDraftPlanName(e.target.value)}
+                    style={{ width: "100%", height: "40px", borderRadius: "8px", paddingLeft: "0.75rem" }}
+                  />
+                  <div style={{ border: "1px dashed rgba(255,255,255,0.08)", borderRadius: "8px", padding: "0.75rem", minHeight: "80px", backgroundColor: "rgba(0,0,0,0.1)" }}>
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>Draft Queue ({draftPlanItems.length} items):</div>
+                    {draftPlanItems.length === 0 ? (
+                      <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Use "Add to Plan" button (+ Plan) on Dashboard files to queue copy/move steps.</span>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", maxHeight: "150px", overflowY: "auto" }}>
+                        {draftPlanItems.map((item, idx) => (
+                          <div key={idx} style={{ fontSize: "0.8rem", display: "flex", justifyContent: "space-between", backgroundColor: "rgba(255,255,255,0.03)", padding: "0.25rem 0.5rem", borderRadius: "4px" }}>
+                            <span className="file-path" style={{ maxWidth: "200px" }}>{item.file_path}</span>
+                            <span style={{ color: "var(--accent-cyan)", fontWeight: 600 }}>{item.action_type.toUpperCase()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleCreatePlan}
+                    disabled={draftPlanItems.length === 0 || !draftPlanName.trim()}
+                    style={{ width: "100%", height: "40px", borderRadius: "8px", fontWeight: "600" }}
+                  >
+                    Save Draft Plan
+                  </button>
+                </div>
+              </section>
+
+              <section className="glass-card" style={{ gap: "1rem" }}>
+                <h3 style={{ margin: 0, fontSize: "1.1rem" }}>Saved Execution Plans</h3>
+                {loadingPlans ? (
+                  <div style={{ textAlign: "center", color: "var(--text-muted)" }}>Loading plans...</div>
+                ) : plans.length === 0 ? (
+                  <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", textAlign: "center", padding: "1rem" }}>No saved plans.</div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                    {plans.map(p => (
+                      <div
+                        key={p.id}
+                        onClick={() => handleSelectPlan(p.id)}
+                        style={{
+                          padding: "1rem",
+                          borderRadius: "8px",
+                          cursor: "pointer",
+                          border: selectedPlan?.id === p.id ? "1px solid var(--accent-cyan)" : "1px solid transparent",
+                          backgroundColor: selectedPlan?.id === p.id ? "rgba(0,188,212,0.05)" : "rgba(255,255,255,0.02)"
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <strong style={{ fontSize: "0.95rem" }}>{p.name}</strong>
+                          <span className={`audit-status ${p.status.toLowerCase()}`}>{p.status}</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.5rem" }}>
+                          <span>Items: {p.items.length}</span>
+                          <span>{new Date(p.created_at).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
+
+            {/* Right side: Plan Details & Actions */}
+            <div>
+              {selectedPlan ? (
+                <section className="glass-card" style={{ gap: "1.25rem", height: "100%" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "0.75rem" }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: "1.25rem" }}>{selectedPlan.name}</h3>
+                      <span style={{ fontSize: "0.8", color: "var(--text-muted)" }}>ID: {selectedPlan.id}</span>
+                    </div>
+                    <span className={`audit-status ${selectedPlan.status.toLowerCase()}`} style={{ fontSize: "0.9rem" }}>{selectedPlan.status.toUpperCase()}</span>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "0.75rem" }}>
+                    {(selectedPlan.status === "draft" || selectedPlan.status === "failed") && (
+                      <button
+                        className="btn btn-primary"
+                        style={{ flex: 1, height: "42px", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}
+                        onClick={() => handleApprovePlan(selectedPlan.id)}
+                        disabled={actionLoading}
+                      >
+                        <CheckCircle size={16} /> Approve & Run Plan
+                      </button>
+                    )}
+                    {(selectedPlan.status === "completed" || selectedPlan.status === "failed") && (
+                      <button
+                        className="btn btn-danger"
+                        style={{ flex: 1, height: "42px", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}
+                        onClick={() => handleUndoPlan(selectedPlan.id)}
+                        disabled={actionLoading}
+                      >
+                        <Undo size={16} /> Rollback/Undo Plan
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", maxHeight: "400px", overflowY: "auto" }}>
+                    <h4 style={{ margin: 0, fontSize: "0.95rem", color: "var(--text-secondary)" }}>Plan Execution Steps:</h4>
+                    {selectedPlan.items.map((item: any, idx: number) => (
+                      <div
+                        key={item.id}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          padding: "0.75rem 1rem",
+                          borderRadius: "8px",
+                          backgroundColor: "rgba(255,255,255,0.015)"
+                        }}
+                      >
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Step {idx + 1}</span>
+                          <strong style={{ fontSize: "0.9rem" }} className="file-path">{item.file_path}</strong>
+                          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Action: {item.action_type.toUpperCase()}</span>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <span className={`audit-status ${item.status.toLowerCase()}`}>{item.status}</span>
+                          {item.error_message && (
+                            <div style={{ color: "var(--danger)", fontSize: "0.75rem", marginTop: "0.25rem" }}>{item.error_message}</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : (
+                <section className="glass-card" style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "300px", color: "var(--text-muted)" }}>
+                  Select a plan on the left to inspect configuration, logs, and trigger transactions.
+                </section>
+              )}
+            </div>
+          </div>
         )}
       </main>
 
@@ -1520,6 +1920,32 @@ export default function App() {
               <p style={{ color: "var(--text-secondary)" }}>
                 Same file path found on both machines, but content hashes differ. Select which version to keep:
               </p>
+              
+              <div className="glass-card" style={{ marginBottom: "1rem", padding: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem", border: "1px solid rgba(0, 188, 212, 0.3)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: "0.35rem", color: "var(--accent-cyan)" }}>
+                    <Sparkles size={16} /> SetSync Reasoned AI Conflict Solver
+                  </span>
+                  <button 
+                    className="btn btn-sm btn-primary" 
+                    onClick={handleAiConflictAnalysis}
+                    disabled={aiConflictLoading}
+                  >
+                    {aiConflictLoading ? "Analyzing..." : "Ask AI Solver"}
+                  </button>
+                </div>
+                
+                {aiConflictRecommendation && (
+                  <div style={{ marginTop: "0.5rem", borderTop: "1px dashed rgba(255,255,255,0.08)", paddingTop: "0.5rem", fontSize: "0.9rem" }}>
+                    <div style={{ marginBottom: "0.25rem" }}>
+                      Recommendation: <strong style={{ color: "var(--success)" }}>Keep Version {aiConflictRecommendation.recommendation === "A" ? nameX : nameY}</strong>
+                    </div>
+                    <div style={{ color: "var(--text-secondary)", fontSize: "0.85rem", lineHeight: "1.3" }}>
+                      Reasoning: {aiConflictRecommendation.reasoning}
+                    </div>
+                  </div>
+                )}
+              </div>
               
               <div className="comparison-container">
                 <div className="comparison-box">

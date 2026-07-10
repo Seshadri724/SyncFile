@@ -10,3 +10,4 @@ class DeltaPayload(BaseModel):
 class JobStatusUpdate(BaseModel):
     status: str                 # "completed", "failed", "in_progress"
     error_message: Optional[str] = None
+    backup_path: Optional[str] = None

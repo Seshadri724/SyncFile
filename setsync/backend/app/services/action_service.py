@@ -88,26 +88,33 @@ async def execute_action(
     triggered_by: str = "ui",
     force: bool = False
 ) -> ActionRecord:
-    # Deletion safety logic
-    if action_type == "delete":
-        # 1. Fetch file record to find content hash
-        file_stmt = select(FileRecord).where(
-            FileRecord.source_id == source,
-            FileRecord.relative_path == relative_path
-        )
-        file_res = await db.execute(file_stmt)
-        file_rec = file_res.scalar_one_or_none()
-        if not file_rec:
-            raise FileNotFoundError(f"File not found in source inventory: {relative_path}")
-            
-        # 2. Check duplicate count across OTHER active sources
-        dup_stmt = select(func.count(FileRecord.id)).where(
-            FileRecord.hash_sha256 == file_rec.hash_sha256,
-            FileRecord.source_id != source
-        )
-        dup_count = (await db.execute(dup_stmt)).scalar_one()
-        if dup_count < 1 and not force:
-            raise ValueError("Safety Block: Deletion refused. This file contains a unique content hash not backed up on any other source.")
+    # 1. Fetch file record to find metadata (size, hash)
+    file_stmt = select(FileRecord).where(
+        FileRecord.source_id == source,
+        FileRecord.relative_path == relative_path
+    )
+    file_res = await db.execute(file_stmt)
+    file_rec = file_res.scalar_one_or_none()
+    if not file_rec:
+        raise FileNotFoundError(f"File not found in source inventory: {relative_path}")
+        
+    # 2. Check duplicate count across OTHER active sources
+    dup_stmt = select(func.count(FileRecord.id)).where(
+        FileRecord.hash_sha256 == file_rec.hash_sha256,
+        FileRecord.source_id != source
+    )
+    dup_count = (await db.execute(dup_stmt)).scalar_one()
+    is_unique = (dup_count < 1)
+
+    # 3. Policy validation check
+    from app.services.policy import validate_action_policy
+    validate_action_policy(
+        relative_path=relative_path,
+        action_type=action_type,
+        size_bytes=file_rec.size_bytes,
+        is_unique=is_unique,
+        force=force
+    )
 
     # 1. Generate unique UUID for the action and job
     action_id = str(uuid.uuid4())

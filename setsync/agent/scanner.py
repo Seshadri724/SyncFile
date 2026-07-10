@@ -2,7 +2,7 @@ import os
 import hashlib
 import datetime
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from agent.db import get_cached_file, update_cached_file, update_scanned_time, delete_stale_cache
 
 def calculate_sha256(filepath: Path) -> str:
@@ -12,6 +12,33 @@ def calculate_sha256(filepath: Path) -> str:
         while chunk := f.read(8192):
             sha256.update(chunk)
     return sha256.hexdigest()
+
+def compute_dhash(image_path: Path) -> Optional[str]:
+    """Computes a 64-bit difference hash (dHash) for an image using PIL.
+    Returns 16-char hex representation, or None if file is not an image or fails to load.
+    """
+    ext = image_path.suffix.lower()
+    if ext not in (".png", ".jpg", ".jpeg", ".webp"):
+        return None
+    try:
+        from PIL import Image
+        with Image.open(image_path) as img:
+            img_gray = img.convert("L").resize((9, 8), Image.Resampling.LANCZOS)
+            pixels = list(img_gray.getdata())
+            
+            diff = []
+            for row in range(8):
+                for col in range(8):
+                    left = pixels[row * 9 + col]
+                    right = pixels[row * 9 + col + 1]
+                    diff.append(left > right)
+            
+            decimal_value = 0
+            for bit in diff:
+                decimal_value = (decimal_value << 1) | bit
+            return f"{decimal_value:016x}"
+    except Exception:
+        return None
 
 def scan_directory(root_dir: str) -> List[Dict[str, Any]]:
     root_path = Path(root_dir).resolve()
@@ -53,19 +80,22 @@ def scan_directory(root_dir: str) -> List[Dict[str, Any]]:
                 # Try cache lookup
                 cached = get_cached_file(abs_path_str)
                 file_hash = None
+                image_hash = None
                 
                 if cached:
-                    cached_size, cached_mtime, cached_hash = cached
+                    cached_size, cached_mtime, cached_hash, cached_image_hash = cached
                     # Compare size and mtime (allow very small float inaccuracy)
                     if cached_size == size and abs(cached_mtime - mtime) < 0.001:
                         file_hash = cached_hash
+                        image_hash = cached_image_hash
                         # Just update the scanned time stamp so it doesn't get swept
                         update_scanned_time(abs_path_str, scan_start)
                         
                 if not file_hash:
                     # Calculate new hash
                     file_hash = calculate_sha256(abs_path)
-                    update_cached_file(abs_path_str, size, mtime, file_hash, scan_start)
+                    image_hash = compute_dhash(abs_path)
+                    update_cached_file(abs_path_str, size, mtime, file_hash, image_hash, scan_start)
                 
                 # Relativize path
                 relative_path = os.path.relpath(abs_path_str, root_path)
@@ -77,7 +107,8 @@ def scan_directory(root_dir: str) -> List[Dict[str, Any]]:
                     "relative_path": relative_path_normalized,
                     "size_bytes": size,
                     "mtime": datetime.datetime.fromtimestamp(mtime).isoformat(),
-                    "hash_sha256": file_hash
+                    "hash_sha256": file_hash,
+                    "image_hash": image_hash
                 })
                 
             except (PermissionError, FileNotFoundError):

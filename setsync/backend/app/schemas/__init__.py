@@ -5,6 +5,7 @@ from app.schemas.audit import AuditLogResponse
 from app.schemas.sources import SourceRegister, SourceResponse, SourceRegisterResponse
 from app.schemas.jobs import SignaturesPayload, DeltaPayload, JobStatusUpdate
 from app.schemas.analysis import DuplicateAnalysisResponse, StaleOrphanEntry
+from app.schemas.plans import PlanCreate, PlanResponse
 
 __all__ = [
     "FileScanItem",
@@ -26,4 +27,6 @@ __all__ = [
     "JobStatusUpdate",
     "DuplicateAnalysisResponse",
     "StaleOrphanEntry",
+    "PlanCreate",
+    "PlanResponse",
 ]

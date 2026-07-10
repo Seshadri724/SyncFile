@@ -3,5 +3,6 @@ from app.models.action_record import ActionRecord
 from app.models.undo_record import UndoRecord
 from app.models.source import Source
 from app.models.job import TransferJob
+from app.models.plan import Plan, PlanItem
 
-__all__ = ["FileRecord", "ActionRecord", "UndoRecord", "Source", "TransferJob"]
+__all__ = ["FileRecord", "ActionRecord", "UndoRecord", "Source", "TransferJob", "Plan", "PlanItem"]

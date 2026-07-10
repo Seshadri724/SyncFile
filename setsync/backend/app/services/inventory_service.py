@@ -20,6 +20,7 @@ async def handle_inventory_upload(db: AsyncSession, upload: InventoryUpload) -> 
                 size_bytes=item.size_bytes,
                 mtime=item.mtime,
                 hash_sha256=item.hash_sha256,
+                image_hash=item.image_hash,
             )
             db.add(db_item)
         
@@ -48,6 +49,7 @@ async def handle_inventory_delta(db: AsyncSession, delta: InventoryDelta) -> Non
                 existing.size_bytes = delta.file.size_bytes
                 existing.mtime = delta.file.mtime
                 existing.hash_sha256 = delta.file.hash_sha256
+                existing.image_hash = delta.file.image_hash
             else:
                 db_item = FileRecord(
                     source_id=delta.source_id,
@@ -55,7 +57,8 @@ async def handle_inventory_delta(db: AsyncSession, delta: InventoryDelta) -> Non
                     relative_path=delta.file.relative_path,
                     size_bytes=delta.file.size_bytes,
                     mtime=delta.file.mtime,
-                    hash_sha256=delta.file.hash_sha256
+                    hash_sha256=delta.file.hash_sha256,
+                    image_hash=delta.file.image_hash
                 )
                 db.add(db_item)
         await db.commit()

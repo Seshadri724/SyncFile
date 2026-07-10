@@ -168,3 +168,79 @@ export async function queryNaturalLanguage(
   if (!res.ok) throw new Error("AI query failed");
   return res.json();
 }
+
+// Plan Management
+export async function createPlan(name: string, items: any[]): Promise<any> {
+  const res = await fetch(`${API_BASE}/plans`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({ name, items }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.detail || "Failed to create plan");
+  }
+  return res.json();
+}
+
+export async function getPlans(): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/plans`, { headers: getHeaders() });
+  if (!res.ok) throw new Error("Failed to fetch plans");
+  return res.json();
+}
+
+export async function getPlan(id: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/plans/${id}`, { headers: getHeaders() });
+  if (!res.ok) throw new Error("Failed to fetch plan details");
+  return res.json();
+}
+
+export async function approvePlan(id: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/plans/${id}/approve`, {
+    method: "POST",
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to approve and execute plan");
+  return res.json();
+}
+
+export async function undoPlan(id: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/plans/${id}/undo`, {
+    method: "POST",
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to undo plan");
+  return res.json();
+}
+
+// Conflict Analysis
+export async function analyzeConflict(
+  filePath: string,
+  sourceX: string,
+  sourceY: string,
+  metadataX: any,
+  metadataY: any
+): Promise<{ recommendation: string; reasoning: string }> {
+  const res = await fetch(`${API_BASE}/query/analyze-conflict`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({
+      file_path: filePath,
+      source_x: sourceX,
+      source_y: sourceY,
+      metadata_x: metadataX,
+      metadata_y: metadataY,
+    }),
+  });
+  if (!res.ok) throw new Error("AI conflict analysis failed");
+  return res.json();
+}
+
+// Semantic duplicates
+export async function getSemanticDuplicates(threshold: number = 10): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/analysis/semantic-duplicates?threshold=${threshold}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to fetch semantic duplicates");
+  return res.json();
+}

@@ -156,7 +156,7 @@ async def update_job_status(
     
     # If the job is completed, we can also log to backend action_records for auditing!
     if payload.status in ("completed", "failed"):
-        # Let's see: we log it to action_records
+        import datetime
         from app.models.action_record import ActionRecord
         # Find if there is already an action_record for this job or create one
         act_stmt = select(ActionRecord).where(ActionRecord.id == job.id)
@@ -178,5 +178,23 @@ async def update_job_status(
             act_rec.status = payload.status
             act_rec.error_message = payload.error_message
         await db.commit()
+
+        # Create UndoRecord for successful completions
+        if payload.status == "completed":
+            from app.models.undo_record import UndoRecord
+            # Check if undo record already exists
+            undo_stmt = select(UndoRecord).where(UndoRecord.action_id == job.id)
+            undo_res = await db.execute(undo_stmt)
+            undo_rec = undo_res.scalar_one_or_none()
+            if not undo_rec:
+                expires_at = datetime.datetime.utcnow() + datetime.timedelta(days=30)
+                undo_rec = UndoRecord(
+                    action_id=job.id,
+                    backup_path=payload.backup_path or "",
+                    expires_at=expires_at,
+                    restored=False
+                )
+                db.add(undo_rec)
+                await db.commit()
 
     return {"message": "Job status updated successfully."}

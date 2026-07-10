@@ -15,6 +15,11 @@ def init_agent_db():
             scanned_at TIMESTAMP
         )
     """)
+    try:
+        cursor.execute("ALTER TABLE file_cache ADD COLUMN image_hash TEXT")
+    except sqlite3.OperationalError:
+        pass
+    conn.commit()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS config (
             key TEXT PRIMARY KEY,
@@ -24,24 +29,24 @@ def init_agent_db():
     conn.commit()
     conn.close()
 
-def get_cached_file(path: str) -> Optional[Tuple[int, float, str]]:
-    """Returns (size, mtime, hash) if path exists, otherwise None."""
+def get_cached_file(path: str) -> Optional[Tuple[int, float, str, Optional[str]]]:
+    """Returns (size, mtime, hash, image_hash) if path exists, otherwise None."""
     conn = sqlite3.connect(AGENT_DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT size, mtime, hash FROM file_cache WHERE path = ?", (path,))
+    cursor.execute("SELECT size, mtime, hash, image_hash FROM file_cache WHERE path = ?", (path,))
     row = cursor.fetchone()
     conn.close()
     if row:
-        return row[0], row[1], row[2]
+        return row[0], row[1], row[2], row[3]
     return None
 
-def update_cached_file(path: str, size: int, mtime: float, file_hash: str, scanned_at: datetime.datetime):
+def update_cached_file(path: str, size: int, mtime: float, file_hash: str, image_hash: Optional[str], scanned_at: datetime.datetime):
     conn = sqlite3.connect(AGENT_DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT OR REPLACE INTO file_cache (path, size, mtime, hash, scanned_at)
-        VALUES (?, ?, ?, ?, ?)
-    """, (path, size, mtime, file_hash, scanned_at.isoformat()))
+        INSERT OR REPLACE INTO file_cache (path, size, mtime, hash, image_hash, scanned_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (path, size, mtime, file_hash, image_hash, scanned_at.isoformat()))
     conn.commit()
     conn.close()
 

@@ -176,3 +176,119 @@ async def query_natural_language(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+import datetime
+
+class ConflictMetadata(BaseModel):
+    size_bytes: int
+    mtime: str
+    hash_sha256: str
+
+class ConflictAnalysisRequest(BaseModel):
+    file_path: str
+    source_x: str
+    source_y: str
+    metadata_x: ConflictMetadata
+    metadata_y: ConflictMetadata
+
+class ConflictAnalysisResponse(BaseModel):
+    recommendation: str  # "A" or "B"
+    reasoning: str
+
+def _fallback_analyze_conflict(req: ConflictAnalysisRequest) -> Dict[str, Any]:
+    mx = req.metadata_x
+    my = req.metadata_y
+    
+    try:
+        # Standardize timestamps
+        tx = datetime.datetime.fromisoformat(mx.mtime.replace("Z", "+00:00"))
+        ty = datetime.datetime.fromisoformat(my.mtime.replace("Z", "+00:00"))
+    except Exception:
+        tx = datetime.datetime.min
+        ty = datetime.datetime.min
+        
+    if tx > ty and mx.size_bytes >= my.size_bytes:
+        return {
+            "recommendation": "A",
+            "reasoning": f"Version X is newer (modified {mx.mtime}) and larger/equal in size ({mx.size_bytes} vs {my.size_bytes} bytes). This is highly likely to be the correct up-to-date choice."
+        }
+    elif ty > tx and my.size_bytes >= mx.size_bytes:
+        return {
+            "recommendation": "B",
+            "reasoning": f"Version Y is newer (modified {my.mtime}) and larger/equal in size ({my.size_bytes} vs {mx.size_bytes} bytes). This is highly likely to be the correct up-to-date choice."
+        }
+    elif tx > ty:
+        return {
+            "recommendation": "A",
+            "reasoning": f"Version X is newer (modified {mx.mtime}) but smaller in size ({mx.size_bytes} vs {my.size_bytes} bytes). We recommend keeping Version X as it has more recent modifications, but review the size difference."
+        }
+    elif ty > tx:
+        return {
+            "recommendation": "B",
+            "reasoning": f"Version Y is newer (modified {my.mtime}) but smaller in size ({my.size_bytes} vs {mx.size_bytes} bytes). We recommend keeping Version Y as it has more recent modifications, but review the size difference."
+        }
+    else:
+        # Identical dates
+        if mx.size_bytes > my.size_bytes:
+            return {
+                "recommendation": "A",
+                "reasoning": f"Both versions have identical modification timestamps, but Version X is larger ({mx.size_bytes} vs {my.size_bytes} bytes). We recommend keeping the larger file."
+            }
+        elif my.size_bytes > mx.size_bytes:
+            return {
+                "recommendation": "B",
+                "reasoning": f"Both versions have identical modification timestamps, but Version Y is larger ({my.size_bytes} vs {mx.size_bytes} bytes). We recommend keeping the larger file."
+            }
+        else:
+            return {
+                "recommendation": "A",
+                "reasoning": "Both versions have identical modification timestamps and sizes. They are likely duplicate copies."
+            }
+
+async def _llm_analyze_conflict(req: ConflictAnalysisRequest, api_key: str) -> Dict[str, Any]:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    
+    prompt = (
+        f"Compare these two conflicting versions of a file and recommend which one to keep.\n"
+        f"File Path: {req.file_path}\n"
+        f"Version A (from source {req.source_x}): size={req.metadata_x.size_bytes} bytes, mtime={req.metadata_x.mtime}, hash={req.metadata_x.hash_sha256}\n"
+        f"Version B (from source {req.source_y}): size={req.metadata_y.size_bytes} bytes, mtime={req.metadata_y.mtime}, hash={req.metadata_y.hash_sha256}\n"
+        f"Provide a JSON response with keys:\n"
+        f"- recommendation: either 'A' or 'B'\n"
+        f"- reasoning: detailed human-readable explanation of why this version was chosen (e.g. newer edits, file integrity, size differences).\n"
+        f"Return ONLY raw JSON. No markdown wrappers or backticks."
+    )
+    
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}]
+    }
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, json=payload, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        raw_text = data["contents"][0]["parts"][0]["text"].strip()
+        if raw_text.startswith("```"):
+            lines = raw_text.splitlines()
+            if lines[0].startswith("```json") or lines[0].startswith("```"):
+                raw_text = "\n".join(lines[1:-1]).strip()
+        return json.loads(raw_text)
+
+@router.post("/analyze-conflict", response_model=ConflictAnalysisResponse)
+async def analyze_file_conflict(
+    request: ConflictAnalysisRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    api_key = os.getenv("GEMINI_API_KEY")
+    if api_key:
+        try:
+            res = await _llm_analyze_conflict(request, api_key)
+            return ConflictAnalysisResponse(
+                recommendation=res.get("recommendation", "A"),
+                reasoning=res.get("reasoning", "LLM Analysis completed.")
+            )
+        except Exception as e:
+            print(f"LLM conflict analysis failed: {e}. Falling back to default parser.")
+            
+    res = _fallback_analyze_conflict(request)
+    return ConflictAnalysisResponse(**res)

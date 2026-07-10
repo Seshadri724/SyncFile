@@ -13,5 +13,6 @@ hypothesis>=6.0.0
 pytest-cov>=4.0.0
 alembic>=1.11.0
 mcp>=1.0.0
+PyYAML>=6.0
 
 

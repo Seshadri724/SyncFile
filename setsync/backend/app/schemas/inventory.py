@@ -8,6 +8,7 @@ class FileScanItem(BaseModel):
     size_bytes: int
     mtime: datetime
     hash_sha256: str
+    image_hash: Optional[str] = None
 
 class InventoryUpload(BaseModel):
     source_id: str

@@ -1,0 +1,16 @@
+# SetSync Estate Operations Policy Config
+
+# Hard blocks deleting files that have the last unique content hash in the network
+never_delete_unique: true
+
+# Glob pattern match matching paths that can never be modified, copied, or deleted
+protected_paths:
+  - "**/work/**"
+  - "**/*.key"
+  - "**/protected/**"
+
+# Maximum number of deletions enqueued in a single plan/batch
+max_batch_delete: 50
+
+# Maximum transfer payload size in GB before requiring explicit human UI approval
+require_approval_above_gb: 5.0

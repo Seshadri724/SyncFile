@@ -13,6 +13,7 @@ class FileRecord(Base):
     size_bytes = Column(Integer, nullable=False)
     mtime = Column(DateTime, nullable=False)
     hash_sha256 = Column(String, nullable=False)
+    image_hash = Column(String(16), nullable=True) # 16 character hex string dHash
     scanned_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     __table_args__ = (
@@ -31,5 +32,6 @@ class FileRecord(Base):
             "size_bytes": self.size_bytes,
             "mtime": self.mtime.isoformat() if self.mtime else None,
             "hash_sha256": self.hash_sha256,
+            "image_hash": self.image_hash,
             "scanned_at": self.scanned_at.isoformat() if self.scanned_at else None,
         }

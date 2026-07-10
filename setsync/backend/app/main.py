@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.database import init_db, AsyncSessionLocal
-from app.routers import inventory_router, sets_router, actions_router, audit_router, sources_router, jobs_router, analysis_router, query_router
+from app.routers import inventory_router, sets_router, actions_router, audit_router, sources_router, jobs_router, analysis_router, query_router, plans_router, semantic_router
 from app.services import purge_old_audit_logs
 
 from app.config import settings
@@ -49,6 +49,8 @@ app.include_router(sources_router)
 app.include_router(jobs_router)
 app.include_router(analysis_router)
 app.include_router(query_router)
+app.include_router(plans_router)
+app.include_router(semantic_router)
 
 @app.get("/")
 def read_root():
