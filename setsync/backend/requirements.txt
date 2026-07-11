@@ -14,5 +14,7 @@ pytest-cov>=4.0.0
 alembic>=1.11.0
 mcp>=1.0.0
 PyYAML>=6.0
+sentry-sdk>=1.30.0
+structlog>=23.1.0
 
 

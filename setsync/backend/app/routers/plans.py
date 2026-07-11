@@ -32,9 +32,16 @@ async def create_plan(payload: PlanCreate, db: AsyncSession = Depends(get_db)):
     # Validate each item against the policy engine before saving!
     for idx, item in enumerate(payload.items):
         # 1. Fetch file record size and hash if present to check rules
+        from app.models.source import Source
+        from app.services.encryption import get_tenant_key, encrypt_deterministic
+        source = await db.get(Source, item.source_id)
+        org_id = source.org_id if source else None
+        key = get_tenant_key(org_id)
+        encrypted_rel_path = encrypt_deterministic(item.file_path, key)
+
         file_stmt = select(FileRecord).where(
             FileRecord.source_id == item.source_id,
-            FileRecord.relative_path == item.file_path
+            FileRecord.relative_path == encrypted_rel_path
         )
         file_res = await db.execute(file_stmt)
         file_rec = file_res.scalar_one_or_none()

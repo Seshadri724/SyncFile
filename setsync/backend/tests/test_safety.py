@@ -23,6 +23,8 @@ async def test_safe_to_delete_policy():
     
     async with AsyncSessionLocal() as db:
         now = datetime.datetime.utcnow()
+        from app.services.encryption import get_tenant_key, encrypt_deterministic
+        key = get_tenant_key(None)
         
         # Insert Source records
         source_a = Source(id="A", name="PC-A", kind="device", roots=[])
@@ -34,8 +36,8 @@ async def test_safe_to_delete_policy():
         # 1. Unique file on A
         unique_file = FileRecord(
             source_id="A",
-            path="/root_a/unique.txt",
-            relative_path="unique.txt",
+            path=encrypt_deterministic("/root_a/unique.txt", key),
+            relative_path=encrypt_deterministic("unique.txt", key),
             size_bytes=100,
             mtime=now,
             hash_sha256="unique_hash_abc"
@@ -45,16 +47,16 @@ async def test_safe_to_delete_policy():
         # 2. Duplicate/shared file on A and B
         shared_a = FileRecord(
             source_id="A",
-            path="/root_a/shared.txt",
-            relative_path="shared.txt",
+            path=encrypt_deterministic("/root_a/shared.txt", key),
+            relative_path=encrypt_deterministic("shared.txt", key),
             size_bytes=200,
             mtime=now,
             hash_sha256="shared_hash_123"
         )
         shared_b = FileRecord(
             source_id="B",
-            path="/root_b/shared.txt",
-            relative_path="shared.txt",
+            path=encrypt_deterministic("/root_b/shared.txt", key),
+            relative_path=encrypt_deterministic("shared.txt", key),
             size_bytes=200,
             mtime=now,
             hash_sha256="shared_hash_123"

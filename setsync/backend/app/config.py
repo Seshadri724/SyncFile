@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     # CORS allowed origins
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
     
+    # Ops Maturity & Telemetry
+    SENTRY_DSN: str = ""
+    ENVIRONMENT: str = "development"
+    LOG_FORMAT: str = "json"
+    
     class Config:
         env_file = ".env"
 

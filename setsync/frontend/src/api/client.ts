@@ -22,7 +22,8 @@ async function getErrorMessage(res: Response, fallback: string): Promise<string>
 async function request(path: string, init: RequestInit = {}, fallback = "Request failed"): Promise<Response> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, init);
+    const mergedInit = { ...init, credentials: init.credentials || "include" as const };
+    res = await fetch(`${API_BASE}${path}`, mergedInit);
   } catch {
     throw new Error("Cannot reach SetSync. Check that the API service is running.");
   }
@@ -239,5 +240,57 @@ export async function getSemanticDuplicates(threshold: number = 10): Promise<any
   const res = await request(`/analysis/semantic-duplicates?threshold=${threshold}`, {
     headers: getHeaders(),
   });
+  return res.json();
+}
+
+// Enterprise Auth, Fleet, and Governance APIs
+export async function loginUser(email: string, password: string): Promise<any> {
+  const res = await request("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  return res.json();
+}
+
+export async function registerOrganization(name: string): Promise<any> {
+  const res = await request("/auth/organizations", {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({ name }),
+  });
+  return res.json();
+}
+
+export async function registerUser(email: string, password: string, role: string, orgId: string): Promise<any> {
+  const res = await request("/auth/users", {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({ email, password, role, org_id: orgId }),
+  });
+  return res.json();
+}
+
+export async function getFleetStats(): Promise<any> {
+  const res = await request("/analysis/fleet", {
+    headers: getHeaders(),
+  }, "Failed to fetch fleet statistics");
+  return res.json();
+}
+
+export async function decommissionSource(id: string): Promise<any> {
+  const res = await request(`/sources/${encodeURIComponent(id)}/decommission`, {
+    method: "POST",
+    headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function logoutUser(): Promise<any> {
+  const res = await request("/auth/logout", {
+    method: "POST",
+    headers: getHeaders(),
+  });
+  localStorage.removeItem("setsync_token");
   return res.json();
 }

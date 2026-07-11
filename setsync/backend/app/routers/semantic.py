@@ -51,13 +51,15 @@ async def get_semantic_duplicates(
         if not records:
             return []
             
-        # Cache source names
+        # Cache source names and org_ids
         source_names = {}
-        async def get_source_name(sid: str) -> str:
+        source_orgs = {}
+        async def get_source_info(sid: str):
             if sid not in source_names:
                 src = await db.get(Source, sid)
                 source_names[sid] = src.name if src else "Unknown Source"
-            return source_names[sid]
+                source_orgs[sid] = src.org_id if src else None
+            return source_names[sid], source_orgs[sid]
 
         # 2. Cluster files by Hamming distance
         clusters: List[Dict[str, Any]] = []
@@ -69,13 +71,17 @@ async def get_semantic_duplicates(
                 if dist <= threshold:
                     matched_cluster = c
                     break
-                    
+            
+            src_name, src_org = await get_source_info(r.source_id)
+            from app.services.encryption import get_tenant_key, decrypt_deterministic
+            key = get_tenant_key(src_org)
+            
             entry = SemanticFileEntry(
                 id=r.id,
                 source_id=r.source_id,
-                source_name=await get_source_name(r.source_id),
-                path=r.path,
-                relative_path=r.relative_path,
+                source_name=src_name,
+                path=decrypt_deterministic(r.path, key),
+                relative_path=decrypt_deterministic(r.relative_path, key),
                 size_bytes=r.size_bytes,
                 mtime=r.mtime.isoformat() if r.mtime else "",
                 image_hash=r.image_hash

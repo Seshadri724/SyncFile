@@ -20,13 +20,14 @@ async def upload_inventory(
 ):
     # Verify source exists
     result = await db.execute(select(Source).where(Source.id == upload.source_id))
-    if not result.scalar_one_or_none():
+    source = result.scalar_one_or_none()
+    if not source:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Source with id '{upload.source_id}' not found."
         )
         
-    count = await handle_inventory_upload(db, upload)
+    count = await handle_inventory_upload(db, upload, org_id=source.org_id)
     return {"message": "Inventory uploaded successfully", "records_ingested": count}
 
 @router.patch("/delta", status_code=status.HTTP_200_OK)
@@ -36,7 +37,8 @@ async def patch_inventory_delta(
 ):
     # Verify source exists
     result = await db.execute(select(Source).where(Source.id == delta.source_id))
-    if not result.scalar_one_or_none():
+    source = result.scalar_one_or_none()
+    if not source:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Source with id '{delta.source_id}' not found."
@@ -47,7 +49,7 @@ async def patch_inventory_delta(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="action must be 'upsert' or 'delete'"
         )
-    await handle_inventory_delta(db, delta)
+    await handle_inventory_delta(db, delta, org_id=source.org_id)
     return {"message": f"Inventory delta processed successfully: {delta.action} on {delta.file.relative_path}"}
 
 @router.get("/status", response_model=InventoryStatusResponse)

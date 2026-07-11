@@ -23,12 +23,14 @@ class FileRecord(Base):
         Index('idx_file_records_hash_sha256', 'hash_sha256'),
     )
 
-    def to_dict(self):
+    def to_dict(self, org_id: str = None):
+        from app.services.encryption import get_tenant_key, decrypt_deterministic
+        key = get_tenant_key(org_id)
         return {
             "id": self.id,
             "source_id": self.source_id,
-            "path": self.path,
-            "relative_path": self.relative_path,
+            "path": decrypt_deterministic(self.path, key),
+            "relative_path": decrypt_deterministic(self.relative_path, key),
             "size_bytes": self.size_bytes,
             "mtime": self.mtime.isoformat() if self.mtime else None,
             "hash_sha256": self.hash_sha256,

@@ -1,5 +1,5 @@
 import hashlib
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -58,7 +58,7 @@ async def create_user(payload: UserCreate, db: AsyncSession = Depends(get_db)):
     return user.to_dict()
 
 @router.post("/login")
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
     stmt = select(User).where(User.email == payload.email)
     user = (await db.execute(stmt)).scalar_one_or_none()
     if not user:
@@ -69,8 +69,21 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
     token = f"user:{user.id}"
+    response.set_cookie(
+        key="setsync_session",
+        value=token,
+        httponly=True,
+        samesite="strict",
+        secure=False,  # Set to True in production with TLS/HTTPS
+        max_age=3600 * 24 * 7  # 1 week
+    )
     return {
         "access_token": token,
         "token_type": "bearer",
         "user": user.to_dict()
     }
+
+@router.post("/logout")
+async def logout(response: Response):
+    response.delete_cookie(key="setsync_session")
+    return {"message": "Logged out successfully"}

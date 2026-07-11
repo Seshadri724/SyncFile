@@ -20,7 +20,12 @@ import {
   approvePlan,
   undoPlan,
   analyzeConflict,
-  getSemanticDuplicates
+  getSemanticDuplicates,
+  loginUser,
+  registerOrganization,
+  registerUser,
+  getFleetStats,
+  decommissionSource
 } from "./api/client";
 import type { 
   UnifiedFileRow, 
@@ -103,6 +108,35 @@ export default function App() {
   const [semanticDuplicates, setSemanticDuplicates] = useState<any[]>([]);
   const [semanticThreshold, setSemanticThreshold] = useState<number>(10);
   const [loadingSemantic, setLoadingSemantic] = useState(false);
+
+  // Enterprise Auth, Fleet & Decommission States
+  const [loginMode, setLoginMode] = useState<"token" | "user" | "register">("user");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [regEmail, setRegEmail] = useState("");
+  const [regPassword, setRegPassword] = useState("");
+  const [regOrgName, setRegOrgName] = useState("");
+  
+  const [fleetStats, setFleetStats] = useState<any | null>(null);
+  const [decommissionBlockedModal, setDecommissionBlockedModal] = useState<{
+    open: boolean;
+    sourceName: string;
+    uniqueFiles: any[];
+  }>({
+    open: false,
+    sourceName: "",
+    uniqueFiles: []
+  });
+  const [decommissionCertModal, setDecommissionCertModal] = useState<{
+    open: boolean;
+    certText: string;
+  }>({
+    open: false,
+    certText: ""
+  });
+
+  // DOM Virtualization State
+  const [scrollTop, setScrollTop] = useState(0);
 
   // Loading States
   const [loadingFiles, setLoadingFiles] = useState(false);
@@ -199,6 +233,7 @@ export default function App() {
       }
       setFiles(data.files);
       setSummary(data.summary);
+      setScrollTop(0);
     } catch (e) {
       console.error(e);
     } finally {
@@ -244,6 +279,7 @@ export default function App() {
     if (!isAuthenticated) return;
     fetchStatus();
     fetchLogs();
+    fetchFleetStats();
   }, [isAuthenticated]);
 
   // Re-fetch files when source selection, tab, or view type changes
@@ -251,6 +287,7 @@ export default function App() {
     if (!isAuthenticated) return;
     if (activeTab === "dashboard") {
       fetchFiles();
+      fetchFleetStats();
     } else if (activeTab === "dedupe") {
       if (dedupeMode === "exact") {
         fetchDuplicates();
@@ -279,7 +316,92 @@ export default function App() {
     return () => clearTimeout(delay);
   }, [searchQuery, isAuthenticated]);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const fetchFleetStats = async () => {
+    try {
+      const data = await getFleetStats();
+      setFleetStats(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDecommission = async (source: any) => {
+    if (!window.confirm(`Are you absolutely sure you want to decommission and retire the device '${source.name}'?`)) {
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const res = await decommissionSource(source.id);
+      setDecommissionCertModal({
+        open: true,
+        certText: res.certificate
+      });
+      // Refresh sources and fleet stats
+      await fetchStatus();
+      await fetchFleetStats();
+    } catch (e: any) {
+      // If blocked because of unique files, the server returns 400 with the files list in details
+      try {
+        const errorDetail = JSON.parse(e.message);
+        if (errorDetail && errorDetail.unique_files) {
+          setDecommissionBlockedModal({
+            open: true,
+            sourceName: source.name,
+            uniqueFiles: errorDetail.unique_files
+          });
+          return;
+        }
+      } catch {}
+      alert("Failed to decommission: " + e.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!regEmail || !regPassword || !regOrgName) {
+      setLoginError("Please fill all registration fields.");
+      return;
+    }
+    setLoggingIn(true);
+    setLoginError("");
+    try {
+      // 1. Create Organization
+      const org = await registerOrganization(regOrgName);
+      // 2. Create Admin User
+      await registerUser(regEmail, regPassword, "admin", org.id);
+      // 3. Login
+      const loginRes = await loginUser(regEmail, regPassword);
+      localStorage.setItem("setsync_token", loginRes.access_token);
+      setIsAuthenticated(true);
+    } catch (err: any) {
+      setLoginError("Registration failed: " + err.message);
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
+  const handleUserLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginEmail || !loginPassword) {
+      setLoginError("Please enter email and password.");
+      return;
+    }
+    setLoggingIn(true);
+    setLoginError("");
+    try {
+      const res = await loginUser(loginEmail, loginPassword);
+      localStorage.setItem("setsync_token", res.access_token);
+      setIsAuthenticated(true);
+    } catch (err: any) {
+      setLoginError("Login failed: " + err.message);
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
+  const handleMasterTokenLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tokenInput) return;
     setLoggingIn(true);
@@ -674,35 +796,134 @@ export default function App() {
   if (!isAuthenticated) {
     return (
       <div className="modal-overlay" style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
-        <div className="modal-content" style={{ maxWidth: "420px", width: "100%", margin: "0 1.5rem", borderRadius: "16px", padding: "2rem" }}>
+        <div className="modal-content" style={{ maxWidth: "460px", width: "100%", margin: "0 1.5rem", borderRadius: "16px", padding: "2.5rem" }}>
           <div className="modal-header" style={{ marginBottom: "1.5rem", borderBottom: "none", textAlign: "center", justifyContent: "center" }}>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
-              <Database size={44} style={{ color: "var(--accent-cyan)" }} />
-              <h2 style={{ fontSize: "1.75rem", fontWeight: "700", color: "var(--text-primary)" }}>SetSync Dashboard</h2>
+              <Database size={48} style={{ color: "var(--accent-cyan)" }} />
+              <h2 style={{ fontSize: "1.75rem", fontWeight: "700", color: "var(--text-primary)" }}>SetSync Enterprise</h2>
+              <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Multi-Tenant Orchestration Platform</span>
             </div>
           </div>
-          <form onSubmit={handleLogin} className="modal-body" style={{ gap: "1.25rem", padding: 0 }}>
-            <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem", textAlign: "center", margin: 0 }}>
-              Enter your shared security token to decrypt and unlock this terminal.
-            </p>
-            <input
-              type="password"
-              className="search-input"
-              style={{ paddingLeft: "1rem", height: "48px", borderRadius: "10px", width: "100%" }}
-              placeholder="Security Key..."
-              value={tokenInput}
-              onChange={(e) => setTokenInput(e.target.value)}
-            />
-            {loginError && <p style={{ color: "var(--danger)", fontSize: "0.85rem", textAlign: "center", margin: 0 }}>{loginError}</p>}
+          
+          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "0.75rem" }}>
             <button 
-              type="submit" 
-              className="btn btn-primary" 
-              style={{ width: "100%", height: "48px", borderRadius: "10px", fontWeight: "600" }}
-              disabled={loggingIn}
+              type="button"
+              className={`btn btn-sm ${loginMode === "user" ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => { setLoginMode("user"); setLoginError(""); }}
+              style={{ flex: 1 }}
             >
-              {loggingIn ? "Connecting..." : "Decrypt & Access"}
+              User Login
             </button>
-          </form>
+            <button 
+              type="button"
+              className={`btn btn-sm ${loginMode === "register" ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => { setLoginMode("register"); setLoginError(""); }}
+              style={{ flex: 1 }}
+            >
+              Register Org
+            </button>
+            <button 
+              type="button"
+              className={`btn btn-sm ${loginMode === "token" ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => { setLoginMode("token"); setLoginError(""); }}
+              style={{ flex: 1 }}
+            >
+              API Token
+            </button>
+          </div>
+
+          {loginMode === "user" && (
+            <form onSubmit={handleUserLogin} className="modal-body" style={{ gap: "1rem", padding: 0, display: "flex", flexDirection: "column" }}>
+              <input
+                type="email"
+                className="search-input"
+                style={{ paddingLeft: "1rem", height: "44px", borderRadius: "8px", width: "100%" }}
+                placeholder="Email address"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+              />
+              <input
+                type="password"
+                className="search-input"
+                style={{ paddingLeft: "1rem", height: "44px", borderRadius: "8px", width: "100%" }}
+                placeholder="Password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+              />
+              {loginError && <p style={{ color: "var(--danger)", fontSize: "0.85rem", margin: 0 }}>{loginError}</p>}
+              <button 
+                type="submit" 
+                className="btn btn-primary" 
+                style={{ width: "100%", height: "44px", borderRadius: "8px", fontWeight: "600", marginTop: "0.5rem" }}
+                disabled={loggingIn}
+              >
+                {loggingIn ? "Signing In..." : "Sign In"}
+              </button>
+            </form>
+          )}
+
+          {loginMode === "register" && (
+            <form onSubmit={handleRegister} className="modal-body" style={{ gap: "1rem", padding: 0, display: "flex", flexDirection: "column" }}>
+              <input
+                type="text"
+                className="search-input"
+                style={{ paddingLeft: "1rem", height: "44px", borderRadius: "8px", width: "100%" }}
+                placeholder="Organization Name (e.g. Acme Corp)"
+                value={regOrgName}
+                onChange={(e) => setRegOrgName(e.target.value)}
+              />
+              <input
+                type="email"
+                className="search-input"
+                style={{ paddingLeft: "1rem", height: "44px", borderRadius: "8px", width: "100%" }}
+                placeholder="Admin Email"
+                value={regEmail}
+                onChange={(e) => setRegEmail(e.target.value)}
+              />
+              <input
+                type="password"
+                className="search-input"
+                style={{ paddingLeft: "1rem", height: "44px", borderRadius: "8px", width: "100%" }}
+                placeholder="Admin Password"
+                value={regPassword}
+                onChange={(e) => setRegPassword(e.target.value)}
+              />
+              {loginError && <p style={{ color: "var(--danger)", fontSize: "0.85rem", margin: 0 }}>{loginError}</p>}
+              <button 
+                type="submit" 
+                className="btn btn-primary" 
+                style={{ width: "100%", height: "44px", borderRadius: "8px", fontWeight: "600", marginTop: "0.5rem" }}
+                disabled={loggingIn}
+              >
+                {loggingIn ? "Creating Account..." : "Create Organization & Admin"}
+              </button>
+            </form>
+          )}
+
+          {loginMode === "token" && (
+            <form onSubmit={handleMasterTokenLogin} className="modal-body" style={{ gap: "1rem", padding: 0, display: "flex", flexDirection: "column" }}>
+              <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", margin: 0 }}>
+                Unlock local instance using the system master API security token.
+              </p>
+              <input
+                type="password"
+                className="search-input"
+                style={{ paddingLeft: "1rem", height: "44px", borderRadius: "8px", width: "100%" }}
+                placeholder="Master API Token..."
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value)}
+              />
+              {loginError && <p style={{ color: "var(--danger)", fontSize: "0.85rem", margin: 0 }}>{loginError}</p>}
+              <button 
+                type="submit" 
+                className="btn btn-primary" 
+                style={{ width: "100%", height: "44px", borderRadius: "8px", fontWeight: "600", marginTop: "0.5rem" }}
+                disabled={loggingIn}
+              >
+                {loggingIn ? "Connecting..." : "Verify & Connect"}
+              </button>
+            </form>
+          )}
         </div>
       </div>
     );
@@ -800,6 +1021,69 @@ export default function App() {
         {/* Tab 1: Dashboard */}
         {activeTab === "dashboard" && (
           <>
+            {/* Fleet Dashboard Panel */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
+              <div className="glass-card" style={{ padding: "1.25rem", display: "flex", alignItems: "center", gap: "1rem" }}>
+                <div style={{ padding: "0.75rem", borderRadius: "10px", backgroundColor: "rgba(0,188,212,0.1)", color: "var(--accent-cyan)" }}>
+                  <Cpu size={24} />
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Fleet Status</div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: "700" }}>
+                    {fleetStats ? fleetStats.total_sources : 0} <span style={{ fontSize: "0.85rem", fontWeight: "400", color: "var(--success)" }}>({fleetStats ? fleetStats.active_sources : 0} online)</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="glass-card" style={{ padding: "1.25rem", display: "flex", alignItems: "center", gap: "1rem" }}>
+                <div style={{ padding: "0.75rem", borderRadius: "10px", backgroundColor: "rgba(156,39,176,0.1)", color: "var(--purple)" }}>
+                  <Database size={24} />
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Monitored Files</div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: "700" }}>
+                    {fleetStats ? fleetStats.total_files.toLocaleString() : 0}
+                  </div>
+                </div>
+              </div>
+
+              <div className="glass-card" style={{ padding: "1.25rem", display: "flex", alignItems: "center", gap: "1rem" }}>
+                <div style={{ padding: "0.75rem", borderRadius: "10px", backgroundColor: "rgba(0,150,136,0.1)", color: "var(--success)" }}>
+                  <HardDrive size={24} />
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Monitored Space</div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: "700" }}>
+                    {fleetStats ? formatSize(fleetStats.total_bytes) : "0 Bytes"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="glass-card" style={{ 
+                padding: "1.25rem", 
+                display: "flex", 
+                alignItems: "center", 
+                gap: "1rem",
+                border: fleetStats && fleetStats.unique_files_count > 0 ? "1px solid rgba(255,87,34,0.3)" : "1px solid transparent",
+                background: fleetStats && fleetStats.unique_files_count > 0 ? "linear-gradient(135deg, rgba(255,255,255,0.01) 0%, rgba(255,87,34,0.02) 100%)" : ""
+              }}>
+                <div style={{ 
+                  padding: "0.75rem", 
+                  borderRadius: "10px", 
+                  backgroundColor: fleetStats && fleetStats.unique_files_count > 0 ? "rgba(255,87,34,0.1)" : "rgba(255,255,255,0.05)", 
+                  color: fleetStats && fleetStats.unique_files_count > 0 ? "#FF5722" : "var(--text-muted)" 
+                }}>
+                  <AlertTriangle size={24} />
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Unique Data Risk</div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: "700", color: fleetStats && fleetStats.unique_files_count > 0 ? "#FF5722" : "var(--accent-cyan)" }}>
+                    {fleetStats ? fleetStats.unique_files_count : 0} <span style={{ fontSize: "0.85rem", fontWeight: "400", color: "var(--text-muted)" }}>({fleetStats ? formatSize(fleetStats.unique_files_bytes) : "0 Bytes"})</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <section className="glass-card comparison-picker" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "1.1rem" }}>
                 <Cpu size={18} style={{ color: "var(--accent-cyan)" }} /> Pick Devices to Compare
@@ -843,6 +1127,39 @@ export default function App() {
                     ))}
                   </select>
                 </div>
+              </div>
+            </section>
+
+            {/* Managed Device Fleet Section */}
+            <section className="glass-card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "1.1rem" }}>
+                <Cpu size={18} style={{ color: "var(--accent-cyan)" }} /> Managed Device Fleet
+              </h3>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "1rem" }}>
+                {sources.map(s => (
+                  <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "1rem", backgroundColor: "rgba(255,255,255,0.015)", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.03)" }}>
+                    <div>
+                      <strong style={{ fontSize: "0.95rem" }}>{s.name}</strong>
+                      <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
+                        Kind: {s.kind}
+                      </div>
+                      <div style={{ fontSize: "0.75rem", marginTop: "0.15rem" }}>
+                        Status: <span className={`audit-status ${s.status === 'online' ? 'completed' : s.status === 'decommissioned' ? 'undone' : 'failed'}`}>{s.status}</span>
+                      </div>
+                    </div>
+                    <div>
+                      {s.status !== "decommissioned" && (
+                        <button 
+                          className="btn btn-sm btn-danger"
+                          onClick={() => handleDecommission(s)}
+                          disabled={actionLoading}
+                        >
+                          Retire
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </section>
 
@@ -1022,7 +1339,7 @@ export default function App() {
 
             {/* Files Table */}
             <section className="glass-card" style={{ padding: 0 }}>
-              <div className="table-container">
+              <div className="table-container" onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}>
                 {loadingFiles ? (
                   <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-secondary)" }}>
                     <RefreshCw size={24} className="animate-spin" style={{ margin: "0 auto 1rem" }} />
@@ -1052,91 +1369,112 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {files.map((file) => (
-                        <tr key={file.id}>
-                          <td>
-                            <div className="file-name-cell">
-                              <FileCode size={20} style={{ color: "var(--text-secondary)" }} />
-                              <div>
-                                <div>{file.name}</div>
-                                <div className="file-path">{file.relative_path}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td>{formatSize(file.size_bytes)}</td>
-                          <td>
-                            <span className={`location-indicator ${file.location.toLowerCase()}`}>
-                              {file.location === "Both" ? "Both Devices" : file.location === "Conflict" ? "Conflict" : file.location === "A" ? nameX : nameY}
-                            </span>
-                          </td>
-                          <td>
-                            <span className="file-hash" title={file.hash_sha256}>
-                              {file.hash_sha256.substring(0, 8)}...
-                            </span>
-                          </td>
-                          <td style={{ textAlign: "right" }}>
-                             {file.location === "A" && (
-                              <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-                                <button 
-                                  className="btn btn-sm btn-primary"
-                                  onClick={() => handleOpenDryRun(file, "copy")}
-                                >
-                                  Copy to B
-                                </button>
-                                <button 
-                                  className="btn btn-sm btn-secondary"
-                                  onClick={() => addToDraftPlan(file, "copy")}
-                                  style={{ border: "1px dashed var(--accent-cyan)", color: "var(--accent-cyan)" }}
-                                >
-                                  + Plan
-                                </button>
-                                <button 
-                                  className="btn btn-sm text-danger"
-                                  onClick={() => handleSafeDelete(file.relative_path, sourceX)}
-                                >
-                                  Delete
-                                </button>
-                              </div>
+                      {(() => {
+                        const rowHeight = 72;
+                        const viewportHeight = 600;
+                        const totalRows = files.length;
+                        const startIndex = Math.max(0, Math.floor(scrollTop / rowHeight) - 3);
+                        const endIndex = Math.min(totalRows, Math.ceil((scrollTop + viewportHeight) / rowHeight) + 3);
+                        const paddingTop = startIndex * rowHeight;
+                        const paddingBottom = Math.max(0, (totalRows - endIndex) * rowHeight);
+                        const visibleFiles = files.slice(startIndex, endIndex);
+
+                        return (
+                          <>
+                            {paddingTop > 0 && (
+                              <tr style={{ height: `${paddingTop}px` }}><td colSpan={5} style={{ padding: 0 }} /></tr>
                             )}
-                            {file.location === "B" && (
-                              <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-                                <button 
-                                  className="btn btn-sm btn-primary"
-                                  onClick={() => handleOpenDryRun(file, "copy")}
-                                >
-                                  Copy to A
-                                </button>
-                                <button 
-                                  className="btn btn-sm btn-secondary"
-                                  onClick={() => addToDraftPlan(file, "copy")}
-                                  style={{ border: "1px dashed var(--accent-cyan)", color: "var(--accent-cyan)" }}
-                                >
-                                  + Plan
-                                </button>
-                                <button 
-                                  className="btn btn-sm text-danger"
-                                  onClick={() => handleSafeDelete(file.relative_path, sourceY)}
-                                >
-                                  Delete
-                                </button>
-                              </div>
+                            {visibleFiles.map((file) => (
+                              <tr key={file.id} style={{ height: `${rowHeight}px` }}>
+                                <td>
+                                  <div className="file-name-cell">
+                                    <FileCode size={20} style={{ color: "var(--text-secondary)" }} />
+                                    <div>
+                                      <div>{file.name}</div>
+                                      <div className="file-path">{file.relative_path}</div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td>{formatSize(file.size_bytes)}</td>
+                                <td>
+                                  <span className={`location-indicator ${file.location.toLowerCase()}`}>
+                                    {file.location === "Both" ? "Both Devices" : file.location === "Conflict" ? "Conflict" : file.location === "A" ? nameX : nameY}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span className="file-hash" title={file.hash_sha256}>
+                                    {file.hash_sha256.substring(0, 8)}...
+                                  </span>
+                                </td>
+                                <td style={{ textAlign: "right" }}>
+                                  {file.location === "A" && (
+                                    <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                                      <button 
+                                        className="btn btn-sm btn-primary"
+                                        onClick={() => handleOpenDryRun(file, "copy")}
+                                      >
+                                        Copy to B
+                                      </button>
+                                      <button 
+                                        className="btn btn-sm btn-secondary"
+                                        onClick={() => addToDraftPlan(file, "copy")}
+                                        style={{ border: "1px dashed var(--accent-cyan)", color: "var(--accent-cyan)" }}
+                                      >
+                                        + Plan
+                                      </button>
+                                      <button 
+                                        className="btn btn-sm text-danger"
+                                        onClick={() => handleSafeDelete(file.relative_path, sourceX)}
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  )}
+                                  {file.location === "B" && (
+                                    <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                                      <button 
+                                        className="btn btn-sm btn-primary"
+                                        onClick={() => handleOpenDryRun(file, "copy")}
+                                      >
+                                        Copy to A
+                                      </button>
+                                      <button 
+                                        className="btn btn-sm btn-secondary"
+                                        onClick={() => addToDraftPlan(file, "copy")}
+                                        style={{ border: "1px dashed var(--accent-cyan)", color: "var(--accent-cyan)" }}
+                                      >
+                                        + Plan
+                                      </button>
+                                      <button 
+                                        className="btn btn-sm text-danger"
+                                        onClick={() => handleSafeDelete(file.relative_path, sourceY)}
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  )}
+                                  {file.location === "Both" && (
+                                    <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginRight: "0.5rem" }}>
+                                      Synchronized
+                                    </span>
+                                  )}
+                                  {file.location === "Conflict" && (
+                                    <button 
+                                      className="btn btn-sm btn-danger"
+                                      onClick={() => setConflictModal({ open: true, row: file })}
+                                    >
+                                      Resolve
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                            {paddingBottom > 0 && (
+                              <tr style={{ height: `${paddingBottom}px` }}><td colSpan={5} style={{ padding: 0 }} /></tr>
                             )}
-                            {file.location === "Both" && (
-                              <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginRight: "0.5rem" }}>
-                                Synchronized
-                              </span>
-                            )}
-                            {file.location === "Conflict" && (
-                              <button 
-                                className="btn btn-sm btn-danger"
-                                onClick={() => setConflictModal({ open: true, row: file })}
-                              >
-                                Resolve
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                          </>
+                        );
+                      })()}
                     </tbody>
                   </table>
                 )}
@@ -2007,13 +2345,133 @@ export default function App() {
                 </div>
               </div>
             </div>
-
             <div className="modal-footer">
               <button 
                 className="btn"
                 onClick={() => setConflictModal({ open: false, row: null })}
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Decommission Blocked Modal */}
+      {decommissionBlockedModal.open && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: "600px" }}>
+            <div className="modal-header" style={{ color: "var(--danger)" }}>
+              <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <AlertTriangle size={20} />
+                Retirement Blocked: Data Loss Risk
+              </h3>
+              <button 
+                className="close-btn"
+                onClick={() => setDecommissionBlockedModal({ open: false, sourceName: "", uniqueFiles: [] })}
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="modal-body">
+              <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem" }}>
+                Cannot decommission device <strong>{decommissionBlockedModal.sourceName}</strong>. The following <strong>{decommissionBlockedModal.uniqueFiles.length}</strong> unique files exist only on this machine and have no copies elsewhere in the organization:
+              </p>
+              
+              <div style={{ maxHeight: "250px", overflowY: "auto", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px", margin: "1rem 0" }}>
+                <table className="file-table" style={{ width: "100%", margin: 0 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: "0.5rem" }}>File Path</th>
+                      <th style={{ padding: "0.5rem", textAlign: "right" }}>Size</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {decommissionBlockedModal.uniqueFiles.map((file, idx) => (
+                      <tr key={idx}>
+                        <td className="file-path" style={{ padding: "0.5rem" }}>{file.relative_path}</td>
+                        <td style={{ padding: "0.5rem", textAlign: "right" }}>{formatSize(file.size_bytes)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", margin: 0 }}>
+                Please run a sync or copy plan to copy these files to another active device before decommissioning.
+              </p>
+            </div>
+
+            <div className="modal-footer">
+              <button 
+                className="btn btn-primary"
+                onClick={() => setDecommissionBlockedModal({ open: false, sourceName: "", uniqueFiles: [] })}
+              >
+                Close & Resolve
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Decommission Certificate Modal */}
+      {decommissionCertModal.open && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: "600px" }}>
+            <div className="modal-header" style={{ color: "var(--success)" }}>
+              <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <ShieldCheck size={20} />
+                Device Decommissioned Safely
+              </h3>
+              <button 
+                className="close-btn"
+                onClick={() => setDecommissionCertModal({ open: false, certText: "" })}
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="modal-body">
+              <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem" }}>
+                The device has been retired from the active fleet. Below is the generated retirement verification certificate:
+              </p>
+              
+              <pre 
+                style={{ 
+                  padding: "1rem", 
+                  backgroundColor: "rgba(0,0,0,0.2)", 
+                  borderRadius: "8px", 
+                  fontSize: "0.85rem", 
+                  color: "#fff",
+                  fontFamily: "monospace",
+                  overflowX: "auto",
+                  whiteSpace: "pre-wrap",
+                  lineHeight: "1.4"
+                }}
+              >
+                {decommissionCertModal.certText}
+              </pre>
+            </div>
+
+            <div className="modal-footer">
+              <button 
+                className="btn btn-secondary"
+                onClick={() => {
+                  const element = document.createElement("a");
+                  const file = new Blob([decommissionCertModal.certText], {type: 'text/plain'});
+                  element.href = URL.createObjectURL(file);
+                  element.download = `setsync-decommission-certificate-${Date.now()}.md`;
+                  document.body.appendChild(element);
+                  element.click();
+                  document.body.removeChild(element);
+                }}
+              >
+                Download Certificate
+              </button>
+              <button 
+                className="btn btn-primary"
+                onClick={() => setDecommissionCertModal({ open: false, certText: "" })}
+              >
+                Done
               </button>
             </div>
           </div>

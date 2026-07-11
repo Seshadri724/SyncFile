@@ -35,8 +35,9 @@ async def get_duplicates(db: AsyncSession = Depends(get_db)):
         total_duplicate_files = 0
         space_reclaimable = 0
 
-        # We cache source names to avoid redundant queries
+        # We cache source names and org_ids to avoid redundant queries
         source_names = {}
+        source_orgs = {}
 
         for row in duplicate_hashes:
             h_val = row.hash_sha256
@@ -53,13 +54,17 @@ async def get_duplicates(db: AsyncSession = Depends(get_db)):
                 if r.source_id not in source_names:
                     src = await db.get(Source, r.source_id)
                     source_names[r.source_id] = src.name if src else "Unknown Source"
+                    source_orgs[r.source_id] = src.org_id if src else None
+                
+                from app.services.encryption import get_tenant_key, decrypt_deterministic
+                key = get_tenant_key(source_orgs[r.source_id])
                 
                 file_entries.append(DuplicateFileEntry(
                     id=r.id,
                     source_id=r.source_id,
                     source_name=source_names[r.source_id],
-                    path=r.path,
-                    relative_path=r.relative_path,
+                    path=decrypt_deterministic(r.path, key),
+                    relative_path=decrypt_deterministic(r.relative_path, key),
                     size_bytes=r.size_bytes,
                     mtime=r.mtime.isoformat() if r.mtime else ""
                 ))
@@ -118,6 +123,7 @@ async def get_stale_orphans(
         records = res.scalars().all()
         
         source_names = {}
+        source_orgs = {}
         entries = []
         now = datetime.datetime.utcnow()
         
@@ -125,14 +131,18 @@ async def get_stale_orphans(
             if r.source_id not in source_names:
                 src = await db.get(Source, r.source_id)
                 source_names[r.source_id] = src.name if src else "Unknown Source"
+                source_orgs[r.source_id] = src.org_id if src else None
                 
+            from app.services.encryption import get_tenant_key, decrypt_deterministic
+            key = get_tenant_key(source_orgs[r.source_id])
+            
             delta = now - r.mtime
             entries.append(StaleOrphanEntry(
                 id=r.id,
                 source_id=r.source_id,
                 source_name=source_names[r.source_id],
-                path=r.path,
-                relative_path=r.relative_path,
+                path=decrypt_deterministic(r.path, key),
+                relative_path=decrypt_deterministic(r.relative_path, key),
                 size_bytes=r.size_bytes,
                 mtime=r.mtime.isoformat() if r.mtime else "",
                 age_days=delta.days
@@ -258,9 +268,15 @@ async def get_governance_analysis(
         files_res = await db.execute(files_stmt)
         records = files_res.scalars().all()
 
+        source_orgs = {s.id: s.org_id for s in sources}
         flagged_files = []
         for r in records:
-            name_lower = r.relative_path.lower()
+            from app.services.encryption import get_tenant_key, decrypt_deterministic
+            key = get_tenant_key(source_orgs.get(r.source_id))
+            decrypted_rel_path = decrypt_deterministic(r.relative_path, key) or ""
+            decrypted_path = decrypt_deterministic(r.path, key) or ""
+            
+            name_lower = decrypted_rel_path.lower()
             reason = None
             if any(k in name_lower for k in ["salary", "payroll", "payslip"]):
                 reason = "Financial / Payroll Document"
@@ -278,8 +294,8 @@ async def get_governance_analysis(
                     id=r.id,
                     source_id=r.source_id,
                     source_name=source_names.get(r.source_id, "Unknown"),
-                    path=r.path,
-                    relative_path=r.relative_path,
+                    path=decrypted_path,
+                    relative_path=decrypted_rel_path,
                     size_bytes=r.size_bytes,
                     flag_reason=reason
                 ))

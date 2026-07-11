@@ -89,9 +89,16 @@ async def execute_action(
     force: bool = False
 ) -> ActionRecord:
     # 1. Fetch file record to find metadata (size, hash)
+    from app.models.source import Source
+    from app.services.encryption import get_tenant_key, encrypt_deterministic
+    src_obj = await db.get(Source, source)
+    org_id = src_obj.org_id if src_obj else None
+    key = get_tenant_key(org_id)
+    encrypted_rel_path = encrypt_deterministic(relative_path, key)
+
     file_stmt = select(FileRecord).where(
         FileRecord.source_id == source,
-        FileRecord.relative_path == relative_path
+        FileRecord.relative_path == encrypted_rel_path
     )
     file_res = await db.execute(file_stmt)
     file_rec = file_res.scalar_one_or_none()

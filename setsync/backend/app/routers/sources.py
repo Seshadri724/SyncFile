@@ -110,9 +110,11 @@ async def decommission_source(
         other_copy = other_res.scalar_one_or_none()
         
         if not other_copy:
+            from app.services.encryption import get_tenant_key, decrypt_deterministic
+            key = get_tenant_key(source.org_id)
             unique_files.append({
-                "path": f.path,
-                "relative_path": f.relative_path,
+                "path": decrypt_deterministic(f.path, key),
+                "relative_path": decrypt_deterministic(f.relative_path, key),
                 "size_bytes": f.size_bytes
             })
 

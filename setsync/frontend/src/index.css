@@ -299,6 +299,8 @@ code, pre {
 /* File Table Styling */
 .table-container {
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: 600px;
   border-radius: var(--radius-md);
 }
 

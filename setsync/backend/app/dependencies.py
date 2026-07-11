@@ -17,11 +17,17 @@ async def verify_token(
     x_setsync_agent_key: str = Header(None),
     db: AsyncSession = Depends(get_db)
 ):
-    # 1. Support direct Bearer Token auth (primarily for frontend Web UI ease of use)
+    # 1. Support direct Bearer Token or Cookie auth (primarily for frontend Web UI ease of use)
+    token = None
     if authorization and not x_setsync_source_id:
-        token = authorization
         if authorization.startswith("Bearer "):
             token = authorization[7:]
+        else:
+            token = authorization
+    else:
+        token = request.cookies.get("setsync_session")
+
+    if token:
         if token == settings.API_TOKEN:
             return token
         if token.startswith("user:"):

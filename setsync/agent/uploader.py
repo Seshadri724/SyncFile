@@ -3,6 +3,7 @@ import json
 import hmac
 import hashlib
 import time
+import gzip
 from typing import List, Dict, Any
 from agent.config import get_agent_config
 
@@ -45,8 +46,14 @@ def upload_inventory_data(files: List[Dict[str, Any]], source_id_arg: str = None
     json_data = json.dumps(payload, separators=(',', ':'))
     headers = get_auth_headers(json_data)
     
+    # Compress with gzip if payload is larger than 1KB
+    post_data = json_data.encode("utf-8")
+    if len(post_data) > 1024:
+        post_data = gzip.compress(post_data)
+        headers["Content-Encoding"] = "gzip"
+        
     try:
-        response = requests.post(url, data=json_data, headers=headers, timeout=60)
+        response = requests.post(url, data=post_data, headers=headers, timeout=60)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:

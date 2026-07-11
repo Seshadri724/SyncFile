@@ -5,18 +5,22 @@ from app.models.source import Source
 from app.schemas.inventory import InventoryUpload, InventoryDelta
 from typing import List, Optional
 import datetime
+from app.services.encryption import get_tenant_key, encrypt_deterministic
 
-async def handle_inventory_upload(db: AsyncSession, upload: InventoryUpload) -> int:
+async def handle_inventory_upload(db: AsyncSession, upload: InventoryUpload, org_id: Optional[str] = None) -> int:
     try:
         # Delete existing records for this source
         await db.execute(delete(FileRecord).where(FileRecord.source_id == upload.source_id))
+        
+        # Derive key
+        key = get_tenant_key(org_id)
         
         # Insert new records
         for item in upload.files:
             db_item = FileRecord(
                 source_id=upload.source_id,
-                path=item.path,
-                relative_path=item.relative_path,
+                path=encrypt_deterministic(item.path, key),
+                relative_path=encrypt_deterministic(item.relative_path, key),
                 size_bytes=item.size_bytes,
                 mtime=item.mtime,
                 hash_sha256=item.hash_sha256,
@@ -30,12 +34,15 @@ async def handle_inventory_upload(db: AsyncSession, upload: InventoryUpload) -> 
         await db.rollback()
         raise e
 
-async def handle_inventory_delta(db: AsyncSession, delta: InventoryDelta) -> None:
+async def handle_inventory_delta(db: AsyncSession, delta: InventoryDelta, org_id: Optional[str] = None) -> None:
     try:
-        # Search for existing record by relative path on source
+        key = get_tenant_key(org_id)
+        encrypted_rel_path = encrypt_deterministic(delta.file.relative_path, key)
+        
+        # Search for existing record by encrypted relative path on source
         stmt = select(FileRecord).where(
             FileRecord.source_id == delta.source_id,
-            FileRecord.relative_path == delta.file.relative_path
+            FileRecord.relative_path == encrypted_rel_path
         )
         result = await db.execute(stmt)
         existing = result.scalar_one_or_none()
@@ -45,7 +52,7 @@ async def handle_inventory_delta(db: AsyncSession, delta: InventoryDelta) -> Non
                 await db.delete(existing)
         elif delta.action == "upsert":
             if existing:
-                existing.path = delta.file.path
+                existing.path = encrypt_deterministic(delta.file.path, key)
                 existing.size_bytes = delta.file.size_bytes
                 existing.mtime = delta.file.mtime
                 existing.hash_sha256 = delta.file.hash_sha256
@@ -53,8 +60,8 @@ async def handle_inventory_delta(db: AsyncSession, delta: InventoryDelta) -> Non
             else:
                 db_item = FileRecord(
                     source_id=delta.source_id,
-                    path=delta.file.path,
-                    relative_path=delta.file.relative_path,
+                    path=encrypt_deterministic(delta.file.path, key),
+                    relative_path=encrypted_rel_path,
                     size_bytes=delta.file.size_bytes,
                     mtime=delta.file.mtime,
                     hash_sha256=delta.file.hash_sha256,

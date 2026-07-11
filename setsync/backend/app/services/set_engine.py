@@ -141,17 +141,19 @@ async def get_computed_sets_from_db(
     limit: Optional[int] = None,
     offset: Optional[int] = None
 ) -> List[UnifiedFileRow]:
+    from app.models.source import Source
+    from app.services.encryption import get_tenant_key, decrypt_deterministic
+
+    source = await db.get(Source, source_x)
+    org_id = source.org_id if source else None
+    key = get_tenant_key(org_id)
+
     base_sql = _get_base_query(view_type)
     
     # Wrap in filter wrapper
     wrapper_sql = f"SELECT * FROM ({base_sql}) WHERE 1=1"
     params: Dict[str, Any] = {"source_x": source_x, "source_y": source_y}
     
-    if q:
-        # Support simple wildcard search
-        wrapper_sql += " AND (relative_path LIKE :q_like)"
-        params["q_like"] = f"%{q}%"
-        
     if min_size is not None:
         wrapper_sql += " AND size_bytes >= :min_size"
         params["min_size"] = min_size
@@ -162,32 +164,51 @@ async def get_computed_sets_from_db(
         
     wrapper_sql += " ORDER BY relative_path ASC"
     
-    if limit is not None:
-        wrapper_sql += " LIMIT :limit"
-        params["limit"] = limit
-        
-    if offset is not None:
-        wrapper_sql += " OFFSET :offset"
-        params["offset"] = offset
+    # Apply limit and offset on DB only if not filtering in Python
+    if not q:
+        if limit is not None:
+            wrapper_sql += " LIMIT :limit"
+            params["limit"] = limit
+            
+        if offset is not None:
+            wrapper_sql += " OFFSET :offset"
+            params["offset"] = offset
         
     result = await db.execute(text(wrapper_sql), params)
     rows = result.fetchall()
     
     file_rows: List[UnifiedFileRow] = []
     for r in rows:
-        name = os.path.basename(r.relative_path)
+        rel_path = decrypt_deterministic(r.relative_path, key)
+        path_a = decrypt_deterministic(r.path_a, key)
+        path_b = decrypt_deterministic(r.path_b, key)
+        name = os.path.basename(rel_path) if rel_path else ""
+        
         file_rows.append(UnifiedFileRow(
             id=r.id,
             name=name,
-            relative_path=r.relative_path,
+            relative_path=rel_path,
             size_bytes=r.size_bytes,
             hash_sha256=r.hash_sha256,
             location=r.location,
-            path_a=r.path_a,
-            path_b=r.path_b,
+            path_a=path_a,
+            path_b=path_b,
             mtime_a=_parse_db_datetime(r.mtime_a),
             mtime_b=_parse_db_datetime(r.mtime_b),
         ))
+        
+    if q:
+        # Filter and paginate in Python
+        q_lower = q.lower()
+        filtered = [
+            row for row in file_rows 
+            if (row.name and q_lower in row.name.lower()) or (row.relative_path and q_lower in row.relative_path.lower())
+        ]
+        if offset is not None:
+            filtered = filtered[offset:]
+        if limit is not None:
+            filtered = filtered[:limit]
+        return filtered
         
     return file_rows
 
