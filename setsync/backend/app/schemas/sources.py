@@ -5,6 +5,7 @@ class SourceRegister(BaseModel):
     name: str
     kind: str = "device"
     roots: List[str] = []
+    org_id: Optional[str] = None
 
 class SourceResponse(BaseModel):
     id: str
@@ -12,6 +13,7 @@ class SourceResponse(BaseModel):
     kind: str
     roots: List[str]
     status: str
+    org_id: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -30,3 +30,25 @@ class StaleOrphanEntry(BaseModel):
     size_bytes: int
     mtime: str
     age_days: int
+
+class FleetResponse(BaseModel):
+    total_sources: int
+    active_sources: int
+    offline_sources: int
+    total_files: int
+    total_bytes: int
+    unique_files_count: int
+    unique_files_bytes: int
+
+class GovernanceFileEntry(BaseModel):
+    id: str
+    source_id: str
+    source_name: str
+    path: str
+    relative_path: str
+    size_bytes: int
+    flag_reason: str
+
+class GovernanceResponse(BaseModel):
+    total_flagged_files: int
+    flagged_files: List[GovernanceFileEntry]

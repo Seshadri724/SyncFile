@@ -753,8 +753,8 @@ export default function App() {
       {/* Main Layout */}
       <main className="main-content">
         {/* Navigation Tabs */}
-        <div style={{ display: "flex", gap: "1rem", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", gap: "1rem" }}>
+        <div className="workspace-nav">
+          <div className="workspace-tabs" role="tablist" aria-label="Workspace views">
             <button 
               className={`btn ${activeTab === "dashboard" ? "btn-primary" : ""}`}
               onClick={() => { setActiveTab("dashboard"); fetchFiles(); }}
@@ -800,12 +800,12 @@ export default function App() {
         {/* Tab 1: Dashboard */}
         {activeTab === "dashboard" && (
           <>
-            <section className="glass-card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <section className="glass-card comparison-picker" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "1.1rem" }}>
                 <Cpu size={18} style={{ color: "var(--accent-cyan)" }} /> Pick Devices to Compare
               </h3>
               
-              <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: "1.5rem" }}>
+              <div className="source-picker" style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: "1.5rem" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.35rem" }}>Left Device (A)</label>
                   <select 
@@ -1029,12 +1029,16 @@ export default function App() {
                     Loading files snapshot...
                   </div>
                 ) : !sourceX || !sourceY ? (
-                  <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-                    Please select both Left and Right devices to inspect file set comparisons.
+                  <div className="empty-state">
+                    <HardDrive size={28} aria-hidden="true" />
+                    <strong>Choose two devices to begin</strong>
+                    <span>Select a left and right device above to inspect their file sets.</span>
                   </div>
                 ) : files.length === 0 ? (
-                  <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-                    No files found matching criteria.
+                  <div className="empty-state">
+                    <Search size={28} aria-hidden="true" />
+                    <strong>Nothing matches this view</strong>
+                    <span>Try a different set filter or clear the file search.</span>
                   </div>
                 ) : (
                   <table className="file-table">

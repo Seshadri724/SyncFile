@@ -24,6 +24,12 @@ async def verify_token(
             token = authorization[7:]
         if token == settings.API_TOKEN:
             return token
+        if token.startswith("user:"):
+            user_id = token[5:]
+            from app.models.tenant import User
+            user = await db.get(User, user_id)
+            if user:
+                return f"user:{user.id}:{user.role}:{user.org_id}"
 
     # 2. Support Agent authentication per-source using agent key hash
     if x_setsync_source_id:
@@ -43,7 +49,9 @@ async def verify_token(
             if source and source.agent_key_hash == token_hash:
                 source.last_seen_at = datetime.datetime.utcnow()
                 await db.commit()
-                return f"agent:{source.id}"
+                # If agent belongs to an org, convey that info in token
+                org_info = f":{source.org_id}" if source.org_id else ""
+                return f"agent:{source.id}{org_info}"
 
     # 3. Support HMAC-SHA256 Signature verification using master API_TOKEN
     if x_setsync_timestamp and x_setsync_signature:
@@ -78,3 +86,30 @@ async def verify_token(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Unauthorized: Invalid token, HMAC signature mismatch, or unregistered source"
     )
+
+def require_role(allowed_roles: list[str]):
+    async def role_checker(token: str = Depends(verify_token)):
+        if token == settings.API_TOKEN or token == "hmac_verified":
+            return token
+        if token.startswith("user:"):
+            parts = token.split(":")
+            role = parts[2]
+            if role not in allowed_roles:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Forbidden: Insufficient permissions for this action"
+                )
+            return token
+        # Agents are allowed operational actions but not configuration/admin changes
+        if token.startswith("agent:"):
+            if "operator" in allowed_roles or "viewer" in allowed_roles:
+                return token
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: Agents cannot perform admin settings actions"
+            )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Insufficient permissions"
+        )
+    return role_checker

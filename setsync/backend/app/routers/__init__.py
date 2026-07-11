@@ -8,6 +8,7 @@ from app.routers.analysis import router as analysis_router
 from app.routers.query import router as query_router
 from app.routers.plans import router as plans_router
 from app.routers.semantic import router as semantic_router
+from app.routers.auth import router as auth_router
 
 __all__ = [
     "inventory_router",
@@ -20,4 +21,5 @@ __all__ = [
     "query_router",
     "plans_router",
     "semantic_router",
+    "auth_router",
 ]
