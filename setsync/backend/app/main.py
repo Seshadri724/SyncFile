@@ -7,11 +7,12 @@ from app.database import init_db, AsyncSessionLocal
 from app.routers import (
     inventory_router, sets_router, actions_router, audit_router,
     sources_router, jobs_router, analysis_router, query_router,
-    plans_router, semantic_router, auth_router
+    plans_router, semantic_router, auth_router, chunked_transfer_router
 )
 from app.services import purge_old_audit_logs
 from app.config import settings
 from app.services.logger import setup_logging, logger
+from app.services.rate_limiter import RateLimitingMiddleware
 
 # Initialize structured logging before other imports trigger loggers
 setup_logging()
@@ -27,6 +28,9 @@ if settings.SENTRY_DSN:
     )
     logger.info("telemetry_initialized", service="sentry")
 
+import asyncio
+from app.services.cleanup import cleanup_loop
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize DB tables
@@ -39,7 +43,14 @@ async def lifespan(app: FastAPI):
             logger.info("audit_logs_purged", count=count)
         except Exception as e:
             logger.error("audit_logs_purge_failed", error=str(e))
+            
+    # Start background cleanup task
+    cleanup_task = asyncio.create_task(cleanup_loop())
+    
     yield
+    
+    # Cancel background cleanup task on shutdown
+    cleanup_task.cancel()
 
 app = FastAPI(
     title="SetSync Core Service API",
@@ -59,6 +70,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Enable request rate limiting (sliding window)
+app.add_middleware(RateLimitingMiddleware)
 
 # Gzip request decompression middleware
 @app.middleware("http")
@@ -111,6 +125,7 @@ app.include_router(query_router)
 app.include_router(plans_router)
 app.include_router(semantic_router)
 app.include_router(auth_router)
+app.include_router(chunked_transfer_router)
 
 @app.get("/")
 def read_root():

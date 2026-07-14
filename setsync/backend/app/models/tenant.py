@@ -9,6 +9,7 @@ class Organization(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False)
+    tenant_key_check_hash = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     # Relationships
@@ -19,6 +20,7 @@ class Organization(Base):
         return {
             "id": self.id,
             "name": self.name,
+            "tenant_key_check_hash": self.tenant_key_check_hash,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 

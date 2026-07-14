@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "npm --prefix frontend run dev",
-    "build": "npm --prefix frontend run build"
+    "build": "npm --prefix frontend run build",
+    "demo": "tsx demo.ts"
+  },
+  "dependencies": {
+    "axios": "^1.18.1",
+    "tsx": "^4.23.0"
   }
 }

@@ -1,4 +1,10 @@
 import React, { useState, useEffect } from "react";
+import AdPlayer from "./components/AdPlayer";
+import LoginView from "./components/LoginView";
+import Sidebar from "./components/Sidebar";
+import DashboardView from "./components/DashboardView";
+import AnalysisView from "./components/AnalysisView";
+import PlansView from "./components/PlansView";
 import { 
   getInventoryStatus, 
   getSources,
@@ -36,22 +42,13 @@ import type {
 } from "./types";
 import { 
   Database, 
-  Search, 
   RefreshCw, 
   CheckCircle, 
   AlertTriangle, 
-  Undo, 
-  History, 
-  LayoutDashboard,
-  FileCode,
-  HardDrive,
-  Cpu,
-  ArrowRightLeft,
-  Trash2,
-  Sparkles,
-  Calendar,
-  Download,
-  ShieldCheck
+  Sparkles, 
+  Download, 
+  ShieldCheck,
+  HardDrive
 } from "lucide-react";
 
 export default function App() {
@@ -59,6 +56,7 @@ export default function App() {
   const [tokenInput, setTokenInput] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
+  const [showPromoAd, setShowPromoAd] = useState(false);
 
   const [activeTab, setActiveTab] = useState<"dashboard" | "audit" | "dedupe" | "stale" | "plans">("dashboard");
   const [inventoryStatus, setInventoryStatus] = useState<InventoryStatus | null>(null);
@@ -98,6 +96,8 @@ export default function App() {
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [draftPlanItems, setDraftPlanItems] = useState<any[]>([]);
   const [draftPlanName, setDraftPlanName] = useState("");
+
+
 
   // AI Conflict states
   const [aiConflictLoading, setAiConflictLoading] = useState(false);
@@ -795,137 +795,32 @@ export default function App() {
 
   if (!isAuthenticated) {
     return (
-      <div className="modal-overlay" style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
-        <div className="modal-content" style={{ maxWidth: "460px", width: "100%", margin: "0 1.5rem", borderRadius: "16px", padding: "2.5rem" }}>
-          <div className="modal-header" style={{ marginBottom: "1.5rem", borderBottom: "none", textAlign: "center", justifyContent: "center" }}>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
-              <Database size={48} style={{ color: "var(--accent-cyan)" }} />
-              <h2 style={{ fontSize: "1.75rem", fontWeight: "700", color: "var(--text-primary)" }}>SetSync Enterprise</h2>
-              <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Multi-Tenant Orchestration Platform</span>
-            </div>
-          </div>
-          
-          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "0.75rem" }}>
-            <button 
-              type="button"
-              className={`btn btn-sm ${loginMode === "user" ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => { setLoginMode("user"); setLoginError(""); }}
-              style={{ flex: 1 }}
-            >
-              User Login
-            </button>
-            <button 
-              type="button"
-              className={`btn btn-sm ${loginMode === "register" ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => { setLoginMode("register"); setLoginError(""); }}
-              style={{ flex: 1 }}
-            >
-              Register Org
-            </button>
-            <button 
-              type="button"
-              className={`btn btn-sm ${loginMode === "token" ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => { setLoginMode("token"); setLoginError(""); }}
-              style={{ flex: 1 }}
-            >
-              API Token
-            </button>
-          </div>
-
-          {loginMode === "user" && (
-            <form onSubmit={handleUserLogin} className="modal-body" style={{ gap: "1rem", padding: 0, display: "flex", flexDirection: "column" }}>
-              <input
-                type="email"
-                className="search-input"
-                style={{ paddingLeft: "1rem", height: "44px", borderRadius: "8px", width: "100%" }}
-                placeholder="Email address"
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-              />
-              <input
-                type="password"
-                className="search-input"
-                style={{ paddingLeft: "1rem", height: "44px", borderRadius: "8px", width: "100%" }}
-                placeholder="Password"
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-              />
-              {loginError && <p style={{ color: "var(--danger)", fontSize: "0.85rem", margin: 0 }}>{loginError}</p>}
-              <button 
-                type="submit" 
-                className="btn btn-primary" 
-                style={{ width: "100%", height: "44px", borderRadius: "8px", fontWeight: "600", marginTop: "0.5rem" }}
-                disabled={loggingIn}
-              >
-                {loggingIn ? "Signing In..." : "Sign In"}
-              </button>
-            </form>
-          )}
-
-          {loginMode === "register" && (
-            <form onSubmit={handleRegister} className="modal-body" style={{ gap: "1rem", padding: 0, display: "flex", flexDirection: "column" }}>
-              <input
-                type="text"
-                className="search-input"
-                style={{ paddingLeft: "1rem", height: "44px", borderRadius: "8px", width: "100%" }}
-                placeholder="Organization Name (e.g. Acme Corp)"
-                value={regOrgName}
-                onChange={(e) => setRegOrgName(e.target.value)}
-              />
-              <input
-                type="email"
-                className="search-input"
-                style={{ paddingLeft: "1rem", height: "44px", borderRadius: "8px", width: "100%" }}
-                placeholder="Admin Email"
-                value={regEmail}
-                onChange={(e) => setRegEmail(e.target.value)}
-              />
-              <input
-                type="password"
-                className="search-input"
-                style={{ paddingLeft: "1rem", height: "44px", borderRadius: "8px", width: "100%" }}
-                placeholder="Admin Password"
-                value={regPassword}
-                onChange={(e) => setRegPassword(e.target.value)}
-              />
-              {loginError && <p style={{ color: "var(--danger)", fontSize: "0.85rem", margin: 0 }}>{loginError}</p>}
-              <button 
-                type="submit" 
-                className="btn btn-primary" 
-                style={{ width: "100%", height: "44px", borderRadius: "8px", fontWeight: "600", marginTop: "0.5rem" }}
-                disabled={loggingIn}
-              >
-                {loggingIn ? "Creating Account..." : "Create Organization & Admin"}
-              </button>
-            </form>
-          )}
-
-          {loginMode === "token" && (
-            <form onSubmit={handleMasterTokenLogin} className="modal-body" style={{ gap: "1rem", padding: 0, display: "flex", flexDirection: "column" }}>
-              <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", margin: 0 }}>
-                Unlock local instance using the system master API security token.
-              </p>
-              <input
-                type="password"
-                className="search-input"
-                style={{ paddingLeft: "1rem", height: "44px", borderRadius: "8px", width: "100%" }}
-                placeholder="Master API Token..."
-                value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
-              />
-              {loginError && <p style={{ color: "var(--danger)", fontSize: "0.85rem", margin: 0 }}>{loginError}</p>}
-              <button 
-                type="submit" 
-                className="btn btn-primary" 
-                style={{ width: "100%", height: "44px", borderRadius: "8px", fontWeight: "600", marginTop: "0.5rem" }}
-                disabled={loggingIn}
-              >
-                {loggingIn ? "Connecting..." : "Verify & Connect"}
-              </button>
-            </form>
-          )}
-        </div>
-      </div>
+      <>
+        {showPromoAd && <AdPlayer onClose={() => setShowPromoAd(false)} />}
+        <LoginView
+          loginMode={loginMode}
+          setLoginMode={setLoginMode}
+          loginEmail={loginEmail}
+          setLoginEmail={setLoginEmail}
+          loginPassword={loginPassword}
+          setLoginPassword={setLoginPassword}
+          regOrgName={regOrgName}
+          setRegOrgName={setRegOrgName}
+          regEmail={regEmail}
+          setRegEmail={setRegEmail}
+          regPassword={regPassword}
+          setRegPassword={setRegPassword}
+          tokenInput={tokenInput}
+          setTokenInput={setTokenInput}
+          loginError={loginError}
+          setLoginError={setLoginError}
+          loggingIn={loggingIn}
+          handleUserLogin={handleUserLogin}
+          handleRegister={handleRegister}
+          handleMasterTokenLogin={handleMasterTokenLogin}
+          setShowPromoAd={setShowPromoAd}
+        />
+      </>
     );
   }
 
@@ -973,964 +868,91 @@ export default function App() {
 
       {/* Main Layout */}
       <main className="main-content">
-        {/* Navigation Tabs */}
-        <div className="workspace-nav">
-          <div className="workspace-tabs" role="tablist" aria-label="Workspace views">
-            <button 
-              className={`btn ${activeTab === "dashboard" ? "btn-primary" : ""}`}
-              onClick={() => { setActiveTab("dashboard"); fetchFiles(); }}
-            >
-              <LayoutDashboard size={18} />
-              Dashboard
-            </button>
-            <button 
-              className={`btn ${activeTab === "dedupe" ? "btn-primary" : ""}`}
-              onClick={() => { setActiveTab("dedupe"); fetchDuplicates(); }}
-            >
-              <Trash2 size={18} />
-              Duplicates
-            </button>
-            <button 
-              className={`btn ${activeTab === "stale" ? "btn-primary" : ""}`}
-              onClick={() => { setActiveTab("stale"); fetchStaleOrphans(); }}
-            >
-              <Calendar size={18} />
-              Stale Orphans
-            </button>
-            <button 
-              className={`btn ${activeTab === "audit" ? "btn-primary" : ""}`}
-              onClick={() => { setActiveTab("audit"); fetchLogs(); }}
-            >
-              <History size={18} />
-              Audit Log
-            </button>
-            <button 
-              className={`btn ${activeTab === "plans" ? "btn-primary" : ""}`}
-              onClick={() => { setActiveTab("plans"); fetchPlansList(); }}
-            >
-              <FileCode size={18} />
-              Transaction Plans
-            </button>
-          </div>
-          
-          <div style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-            Active Devices Registered: <strong style={{ color: "var(--text-secondary)" }}>{sources.length}</strong>
-          </div>
-        </div>
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          sourcesCount={sources.length}
+          fetchFiles={fetchFiles}
+          fetchDuplicates={fetchDuplicates}
+          fetchStaleOrphans={fetchStaleOrphans}
+          fetchLogs={fetchLogs}
+          fetchPlansList={fetchPlansList}
+        />
 
-        {/* Tab 1: Dashboard */}
         {activeTab === "dashboard" && (
-          <>
-            {/* Fleet Dashboard Panel */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
-              <div className="glass-card" style={{ padding: "1.25rem", display: "flex", alignItems: "center", gap: "1rem" }}>
-                <div style={{ padding: "0.75rem", borderRadius: "10px", backgroundColor: "rgba(0,188,212,0.1)", color: "var(--accent-cyan)" }}>
-                  <Cpu size={24} />
-                </div>
-                <div>
-                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Fleet Status</div>
-                  <div style={{ fontSize: "1.5rem", fontWeight: "700" }}>
-                    {fleetStats ? fleetStats.total_sources : 0} <span style={{ fontSize: "0.85rem", fontWeight: "400", color: "var(--success)" }}>({fleetStats ? fleetStats.active_sources : 0} online)</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="glass-card" style={{ padding: "1.25rem", display: "flex", alignItems: "center", gap: "1rem" }}>
-                <div style={{ padding: "0.75rem", borderRadius: "10px", backgroundColor: "rgba(156,39,176,0.1)", color: "var(--purple)" }}>
-                  <Database size={24} />
-                </div>
-                <div>
-                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Monitored Files</div>
-                  <div style={{ fontSize: "1.5rem", fontWeight: "700" }}>
-                    {fleetStats ? fleetStats.total_files.toLocaleString() : 0}
-                  </div>
-                </div>
-              </div>
-
-              <div className="glass-card" style={{ padding: "1.25rem", display: "flex", alignItems: "center", gap: "1rem" }}>
-                <div style={{ padding: "0.75rem", borderRadius: "10px", backgroundColor: "rgba(0,150,136,0.1)", color: "var(--success)" }}>
-                  <HardDrive size={24} />
-                </div>
-                <div>
-                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Monitored Space</div>
-                  <div style={{ fontSize: "1.5rem", fontWeight: "700" }}>
-                    {fleetStats ? formatSize(fleetStats.total_bytes) : "0 Bytes"}
-                  </div>
-                </div>
-              </div>
-
-              <div className="glass-card" style={{ 
-                padding: "1.25rem", 
-                display: "flex", 
-                alignItems: "center", 
-                gap: "1rem",
-                border: fleetStats && fleetStats.unique_files_count > 0 ? "1px solid rgba(255,87,34,0.3)" : "1px solid transparent",
-                background: fleetStats && fleetStats.unique_files_count > 0 ? "linear-gradient(135deg, rgba(255,255,255,0.01) 0%, rgba(255,87,34,0.02) 100%)" : ""
-              }}>
-                <div style={{ 
-                  padding: "0.75rem", 
-                  borderRadius: "10px", 
-                  backgroundColor: fleetStats && fleetStats.unique_files_count > 0 ? "rgba(255,87,34,0.1)" : "rgba(255,255,255,0.05)", 
-                  color: fleetStats && fleetStats.unique_files_count > 0 ? "#FF5722" : "var(--text-muted)" 
-                }}>
-                  <AlertTriangle size={24} />
-                </div>
-                <div>
-                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Unique Data Risk</div>
-                  <div style={{ fontSize: "1.5rem", fontWeight: "700", color: fleetStats && fleetStats.unique_files_count > 0 ? "#FF5722" : "var(--accent-cyan)" }}>
-                    {fleetStats ? fleetStats.unique_files_count : 0} <span style={{ fontSize: "0.85rem", fontWeight: "400", color: "var(--text-muted)" }}>({fleetStats ? formatSize(fleetStats.unique_files_bytes) : "0 Bytes"})</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <section className="glass-card comparison-picker" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "1.1rem" }}>
-                <Cpu size={18} style={{ color: "var(--accent-cyan)" }} /> Pick Devices to Compare
-              </h3>
-              
-              <div className="source-picker" style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: "1.5rem" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.35rem" }}>Left Device (A)</label>
-                  <select 
-                    className="search-input"
-                    style={{ width: "100%", height: "42px", borderRadius: "8px", paddingLeft: "0.75rem" }}
-                    value={sourceX}
-                    onChange={(e) => setSourceX(e.target.value)}
-                  >
-                    <option value="" disabled>Select Device A...</option>
-                    {sources.map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.status} - {s.kind})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "center", paddingTop: "1.2rem" }}>
-                  <ArrowRightLeft size={20} style={{ color: "var(--text-muted)" }} />
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.35rem" }}>Right Device (B)</label>
-                  <select 
-                    className="search-input"
-                    style={{ width: "100%", height: "42px", borderRadius: "8px", paddingLeft: "0.75rem" }}
-                    value={sourceY}
-                    onChange={(e) => setSourceY(e.target.value)}
-                  >
-                    <option value="" disabled>Select Device B...</option>
-                    {sources.map(s => (
-                      <option key={s.id} value={s.id} disabled={s.id === sourceX && sources.length > 1}>
-                        {s.name} ({s.status} - {s.kind})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </section>
-
-            {/* Managed Device Fleet Section */}
-            <section className="glass-card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "1.1rem" }}>
-                <Cpu size={18} style={{ color: "var(--accent-cyan)" }} /> Managed Device Fleet
-              </h3>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "1rem" }}>
-                {sources.map(s => (
-                  <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "1rem", backgroundColor: "rgba(255,255,255,0.015)", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.03)" }}>
-                    <div>
-                      <strong style={{ fontSize: "0.95rem" }}>{s.name}</strong>
-                      <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
-                        Kind: {s.kind}
-                      </div>
-                      <div style={{ fontSize: "0.75rem", marginTop: "0.15rem" }}>
-                        Status: <span className={`audit-status ${s.status === 'online' ? 'completed' : s.status === 'decommissioned' ? 'undone' : 'failed'}`}>{s.status}</span>
-                      </div>
-                    </div>
-                    <div>
-                      {s.status !== "decommissioned" && (
-                        <button 
-                          className="btn btn-sm btn-danger"
-                          onClick={() => handleDecommission(s)}
-                          disabled={actionLoading}
-                        >
-                          Retire
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {/* AI Search Assistant Panel */}
-            <section className="glass-card" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-              <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "1.1rem" }}>
-                <Sparkles size={18} style={{ color: "var(--accent-cyan)" }} /> Ask AI Search Assistant
-              </h3>
-              
-              <div style={{ display: "flex", gap: "1rem" }}>
-                <input 
-                  type="text" 
-                  className="search-input" 
-                  style={{ flex: 1, height: "42px", paddingLeft: "1rem", borderRadius: "8px" }}
-                  placeholder="e.g. Find files larger than 1MB on Left PC..."
-                  value={aiQueryText}
-                  onChange={(e) => setAiQueryText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleAiQuery(); }}
-                />
-                <button 
-                  className="btn btn-primary"
-                  style={{ height: "42px", display: "flex", alignItems: "center", gap: "0.35rem" }}
-                  onClick={handleAiQuery}
-                  disabled={loadingFiles || !aiQueryText.trim()}
-                >
-                  <Sparkles size={16} />
-                  Ask AI
-                </button>
-              </div>
-
-              {activeAiFilters && (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: "rgba(0,188,212,0.1)", padding: "0.5rem 1rem", borderRadius: "6px" }}>
-                  <span style={{ fontSize: "0.85rem", color: "var(--accent-cyan)" }}>
-                    Active AI Filters: <strong>{JSON.stringify(activeAiFilters)}</strong>
-                  </span>
-                  <button 
-                    className="btn btn-sm btn-secondary" 
-                    onClick={handleClearAiFilters}
-                    style={{ minHeight: "26px", padding: "0.25rem 0.5rem" }}
-                  >
-                    Clear AI Search
-                  </button>
-                </div>
-              )}
-            </section>
-
-            {/* Live Summary Strip */}
-            <section className="summary-grid">
-              <div 
-                className={`glass-card summary-card union ${viewType === "union" ? "active" : ""}`}
-                onClick={() => setViewType("union")}
-              >
-                <div className="summary-card-info">
-                  <h4>Union (All Files)</h4>
-                  <div className="count">{summary.union_count}</div>
-                </div>
-                <div className="summary-card-icon" style={{ color: "var(--accent-blue)" }}>
-                  <Database size={24} />
-                </div>
-              </div>
-
-              <div 
-                className={`glass-card summary-card intersection ${viewType === "intersection" ? "active" : ""}`}
-                onClick={() => setViewType("intersection")}
-              >
-                <div className="summary-card-info">
-                  <h4>Intersection</h4>
-                  <div className="count">{summary.intersection_count}</div>
-                </div>
-                <div className="summary-card-icon" style={{ color: "var(--success)" }}>
-                  <CheckCircle size={24} />
-                </div>
-              </div>
-
-              <div 
-                className={`glass-card summary-card only_a ${viewType === "only_a" ? "active" : ""}`}
-                onClick={() => setViewType("only_a")}
-              >
-                <div className="summary-card-info">
-                  <h4>Only {nameX}</h4>
-                  <div className="count">{summary.only_a_count}</div>
-                </div>
-                <div className="summary-card-icon" style={{ color: "var(--purple)" }}>
-                  <HardDrive size={24} />
-                </div>
-              </div>
-
-              <div 
-                className={`glass-card summary-card only_b ${viewType === "only_b" ? "active" : ""}`}
-                onClick={() => setViewType("only_b")}
-              >
-                <div className="summary-card-info">
-                  <h4>Only {nameY}</h4>
-                  <div className="count">{summary.only_b_count}</div>
-                </div>
-                <div className="summary-card-icon" style={{ color: "var(--accent-cyan)" }}>
-                  <HardDrive size={24} />
-                </div>
-              </div>
-
-              <div 
-                className={`glass-card summary-card conflicts ${viewType === "conflicts" ? "active" : ""}`}
-                onClick={() => setViewType("conflicts")}
-              >
-                <div className="summary-card-info">
-                  <h4>Conflicts</h4>
-                  <div className="count">{summary.conflict_count}</div>
-                </div>
-                <div className="summary-card-icon" style={{ color: "var(--danger)" }}>
-                  <AlertTriangle size={24} />
-                </div>
-              </div>
-            </section>
-
-            {/* Inventory Status Panel */}
-            {inventoryStatus && inventoryStatus.sources && inventoryStatus.sources.length > 0 && (
-              <section className="glass-card" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem" }}>
-                {inventoryStatus.sources.map(s => (
-                  <div key={s.source_id}>
-                    <h3 style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <HardDrive size={18} style={{ color: s.source_id === sourceX ? "var(--purple)" : "var(--accent-cyan)" }} /> 
-                      {s.name} {s.source_id === sourceX ? "(A)" : s.source_id === sourceY ? "(B)" : ""}
-                    </h3>
-                    <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>Total Scanned: <strong>{s.count} files</strong></p>
-                    <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Last Scan: {formatDate(s.last_scan)}</p>
-                  </div>
-                ))}
-              </section>
-            )}
-
-            {/* Search & Filters */}
-            <section className="toolbar">
-              <div className="search-input-wrapper">
-                <Search size={18} className="search-icon" />
-                <input 
-                  type="text" 
-                  className="search-input" 
-                  placeholder="Fuzzy search file name, extension or path..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-
-              <div className="filter-tabs">
-                <button 
-                  className={`filter-tab ${viewType === "union" ? "active" : ""}`}
-                  onClick={() => setViewType("union")}
-                >
-                  All Files
-                </button>
-                <button 
-                  className={`filter-tab ${viewType === "intersection" ? "active" : ""}`}
-                  onClick={() => setViewType("intersection")}
-                >
-                  On Both
-                </button>
-                <button 
-                  className={`filter-tab ${viewType === "only_a" ? "active" : ""}`}
-                  onClick={() => setViewType("only_a")}
-                >
-                  Only {nameX}
-                </button>
-                <button 
-                  className={`filter-tab ${viewType === "only_b" ? "active" : ""}`}
-                  onClick={() => setViewType("only_b")}
-                >
-                  Only {nameY}
-                </button>
-                <button 
-                  className={`filter-tab ${viewType === "conflicts" ? "active" : ""}`}
-                  onClick={() => setViewType("conflicts")}
-                >
-                  Conflicts
-                </button>
-              </div>
-            </section>
-
-            {/* Files Table */}
-            <section className="glass-card" style={{ padding: 0 }}>
-              <div className="table-container" onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}>
-                {loadingFiles ? (
-                  <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-secondary)" }}>
-                    <RefreshCw size={24} className="animate-spin" style={{ margin: "0 auto 1rem" }} />
-                    Loading files snapshot...
-                  </div>
-                ) : !sourceX || !sourceY ? (
-                  <div className="empty-state">
-                    <HardDrive size={28} aria-hidden="true" />
-                    <strong>Choose two devices to begin</strong>
-                    <span>Select a left and right device above to inspect their file sets.</span>
-                  </div>
-                ) : files.length === 0 ? (
-                  <div className="empty-state">
-                    <Search size={28} aria-hidden="true" />
-                    <strong>Nothing matches this view</strong>
-                    <span>Try a different set filter or clear the file search.</span>
-                  </div>
-                ) : (
-                  <table className="file-table">
-                    <thead>
-                      <tr>
-                        <th>File Name & Path</th>
-                        <th>Size</th>
-                        <th>Location</th>
-                        <th>SHA-256 Hash</th>
-                        <th style={{ textAlign: "right" }}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(() => {
-                        const rowHeight = 72;
-                        const viewportHeight = 600;
-                        const totalRows = files.length;
-                        const startIndex = Math.max(0, Math.floor(scrollTop / rowHeight) - 3);
-                        const endIndex = Math.min(totalRows, Math.ceil((scrollTop + viewportHeight) / rowHeight) + 3);
-                        const paddingTop = startIndex * rowHeight;
-                        const paddingBottom = Math.max(0, (totalRows - endIndex) * rowHeight);
-                        const visibleFiles = files.slice(startIndex, endIndex);
-
-                        return (
-                          <>
-                            {paddingTop > 0 && (
-                              <tr style={{ height: `${paddingTop}px` }}><td colSpan={5} style={{ padding: 0 }} /></tr>
-                            )}
-                            {visibleFiles.map((file) => (
-                              <tr key={file.id} style={{ height: `${rowHeight}px` }}>
-                                <td>
-                                  <div className="file-name-cell">
-                                    <FileCode size={20} style={{ color: "var(--text-secondary)" }} />
-                                    <div>
-                                      <div>{file.name}</div>
-                                      <div className="file-path">{file.relative_path}</div>
-                                    </div>
-                                  </div>
-                                </td>
-                                <td>{formatSize(file.size_bytes)}</td>
-                                <td>
-                                  <span className={`location-indicator ${file.location.toLowerCase()}`}>
-                                    {file.location === "Both" ? "Both Devices" : file.location === "Conflict" ? "Conflict" : file.location === "A" ? nameX : nameY}
-                                  </span>
-                                </td>
-                                <td>
-                                  <span className="file-hash" title={file.hash_sha256}>
-                                    {file.hash_sha256.substring(0, 8)}...
-                                  </span>
-                                </td>
-                                <td style={{ textAlign: "right" }}>
-                                  {file.location === "A" && (
-                                    <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-                                      <button 
-                                        className="btn btn-sm btn-primary"
-                                        onClick={() => handleOpenDryRun(file, "copy")}
-                                      >
-                                        Copy to B
-                                      </button>
-                                      <button 
-                                        className="btn btn-sm btn-secondary"
-                                        onClick={() => addToDraftPlan(file, "copy")}
-                                        style={{ border: "1px dashed var(--accent-cyan)", color: "var(--accent-cyan)" }}
-                                      >
-                                        + Plan
-                                      </button>
-                                      <button 
-                                        className="btn btn-sm text-danger"
-                                        onClick={() => handleSafeDelete(file.relative_path, sourceX)}
-                                      >
-                                        Delete
-                                      </button>
-                                    </div>
-                                  )}
-                                  {file.location === "B" && (
-                                    <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-                                      <button 
-                                        className="btn btn-sm btn-primary"
-                                        onClick={() => handleOpenDryRun(file, "copy")}
-                                      >
-                                        Copy to A
-                                      </button>
-                                      <button 
-                                        className="btn btn-sm btn-secondary"
-                                        onClick={() => addToDraftPlan(file, "copy")}
-                                        style={{ border: "1px dashed var(--accent-cyan)", color: "var(--accent-cyan)" }}
-                                      >
-                                        + Plan
-                                      </button>
-                                      <button 
-                                        className="btn btn-sm text-danger"
-                                        onClick={() => handleSafeDelete(file.relative_path, sourceY)}
-                                      >
-                                        Delete
-                                      </button>
-                                    </div>
-                                  )}
-                                  {file.location === "Both" && (
-                                    <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginRight: "0.5rem" }}>
-                                      Synchronized
-                                    </span>
-                                  )}
-                                  {file.location === "Conflict" && (
-                                    <button 
-                                      className="btn btn-sm btn-danger"
-                                      onClick={() => setConflictModal({ open: true, row: file })}
-                                    >
-                                      Resolve
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                            {paddingBottom > 0 && (
-                              <tr style={{ height: `${paddingBottom}px` }}><td colSpan={5} style={{ padding: 0 }} /></tr>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </section>
-          </>
+          <DashboardView
+            fleetStats={fleetStats}
+            sources={sources}
+            sourceX={sourceX}
+            setSourceX={setSourceX}
+            sourceY={sourceY}
+            setSourceY={setSourceY}
+            handleDecommission={handleDecommission}
+            actionLoading={actionLoading}
+            aiQueryText={aiQueryText}
+            setAiQueryText={setAiQueryText}
+            handleAiQuery={handleAiQuery}
+            activeAiFilters={activeAiFilters}
+            handleClearAiFilters={handleClearAiFilters}
+            viewType={viewType}
+            setViewType={setViewType}
+            summary={summary}
+            inventoryStatus={inventoryStatus}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            loadingFiles={loadingFiles}
+            files={files}
+            scrollTop={scrollTop}
+            setScrollTop={setScrollTop}
+            handleOpenDryRun={handleOpenDryRun}
+            addToDraftPlan={addToDraftPlan}
+            handleSafeDelete={handleSafeDelete}
+            setConflictModal={setConflictModal}
+            formatSize={formatSize}
+            formatDate={formatDate}
+          />
         )}
 
-         {/* Tab 2: Duplicates */}
-        {activeTab === "dedupe" && (
-          <section className="glass-card" style={{ gap: "1.5rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: "1.25rem" }}>Duplicate File Analyzer</h3>
-                <p style={{ margin: "0.25rem 0 0 0", color: "var(--text-secondary)", fontSize: "0.9rem" }}>
-                  Find redundant files stored multiple times across your network.
-                </p>
-              </div>
-              
-              {duplicatesReport && dedupeMode === "exact" && (
-                <div style={{ textAlign: "right" }}>
-                  <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Space Reclaimable</span>
-                  <div style={{ fontSize: "1.75rem", fontWeight: "700", color: "var(--success)" }}>
-                    {formatSize(duplicatesReport.space_reclaimable_bytes)}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: "flex", gap: "1rem", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "0.75rem" }}>
-              <button 
-                className={`btn btn-sm ${dedupeMode === "exact" ? "btn-primary" : "btn-secondary"}`}
-                onClick={() => setDedupeMode("exact")}
-              >
-                Exact Duplicates (SHA-256)
-              </button>
-              <button 
-                className={`btn btn-sm ${dedupeMode === "semantic" ? "btn-primary" : "btn-secondary"}`}
-                onClick={() => { setDedupeMode("semantic"); fetchSemanticDedupe(); }}
-              >
-                Visual Near-Duplicates (dHash)
-              </button>
-            </div>
-
-            {dedupeMode === "exact" ? (
-              loadingDedupe ? (
-                <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-secondary)" }}>
-                  <RefreshCw size={24} className="animate-spin" style={{ margin: "0 auto 1rem" }} />
-                  Analyzing duplicate structures...
-                </div>
-              ) : !duplicatesReport || duplicatesReport.groups.length === 0 ? (
-                <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-                  No duplicate groups detected in your inventory! Excellent storage health.
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-                  {duplicatesReport.groups.map((group: any) => (
-                    <div 
-                      key={group.hash_sha256} 
-                      className="glass-card" 
-                      style={{ padding: "1.25rem", backgroundColor: "rgba(255, 255, 255, 0.015)" }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.75rem", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "0.5rem" }}>
-                        <div>
-                          <strong style={{ fontSize: "0.95rem" }}>Hash: {group.hash_sha256.substring(0, 16)}...</strong>
-                          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Duplicate Count: {group.files.length} copies</div>
-                        </div>
-                        <div style={{ fontWeight: 600, color: "var(--accent-cyan)" }}>
-                          {formatSize(group.size_bytes)} each
-                        </div>
-                      </div>
-
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                        {group.files.map((file: any) => (
-                          <div 
-                            key={file.id} 
-                            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.5rem", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "6px" }}
-                          >
-                            <div>
-                              <div style={{ fontSize: "0.9rem" }}>{file.path}</div>
-                              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                                Device: <strong>{file.source_name}</strong> · Modified: {formatDate(file.mtime)}
-                              </div>
-                            </div>
-
-                            <button 
-                              className="btn btn-sm btn-danger"
-                              onClick={() => handleSafeDelete(file.relative_path, file.source_id)}
-                              style={{ minHeight: "30px", padding: "0.25rem 0.75rem" }}
-                            >
-                              <Trash2 size={13} style={{ marginRight: "0.25rem" }} />
-                              Delete Copy
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "1rem", backgroundColor: "rgba(255,255,255,0.02)", padding: "0.75rem 1rem", borderRadius: "8px" }}>
-                  <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)", minWidth: "300px" }}>
-                    Hamming Distance Threshold: <strong>{semanticThreshold}</strong> (Lower = more similar)
-                  </span>
-                  <input 
-                    type="range" 
-                    min="0" 
-                    max="64" 
-                    value={semanticThreshold} 
-                    onChange={(e) => setSemanticThreshold(Number(e.target.value))} 
-                    style={{ flex: 1 }}
-                  />
-                </div>
-
-                {loadingSemantic ? (
-                  <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-secondary)" }}>
-                    <RefreshCw size={24} className="animate-spin" style={{ margin: "0 auto 1rem" }} />
-                    Analyzing visual near-duplicates...
-                  </div>
-                ) : semanticDuplicates.length === 0 ? (
-                  <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-                    No visually similar image duplicates detected.
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-                    {semanticDuplicates.map((group, idx) => (
-                      <div key={idx} className="glass-card" style={{ padding: "1.25rem", backgroundColor: "rgba(255,255,255,0.015)" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.75rem", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "0.5rem" }}>
-                          <div>
-                            <strong>Representative Hash: {group.representative_hash.substring(0, 16)}...</strong>
-                            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Duplicate Count: {group.files.length} images</div>
-                          </div>
-                        </div>
-
-                        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                          {group.files.map((file: any) => (
-                            <div 
-                              key={file.id} 
-                              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.5rem", backgroundColor: "rgba(255,255,255,0.02)", borderRadius: "6px" }}
-                            >
-                              <div>
-                                <div style={{ fontSize: "0.9rem" }}>{file.path}</div>
-                                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                                  Device: <strong>{file.source_name}</strong> · dHash: <code style={{ color: "var(--accent-cyan)" }}>{file.image_hash}</code> · Size: {formatSize(file.size_bytes)}
-                                </div>
-                              </div>
-
-                              <button 
-                                className="btn btn-sm btn-danger"
-                                onClick={() => handleSafeDelete(file.relative_path, file.source_id)}
-                                style={{ minHeight: "30px", padding: "0.25rem 0.75rem" }}
-                              >
-                                <Trash2 size={13} style={{ marginRight: "0.25rem" }} />
-                                Delete Copy
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
+        {(activeTab === "dedupe" || activeTab === "stale" || activeTab === "audit") && (
+          <AnalysisView
+            activeTab={activeTab}
+            duplicatesReport={duplicatesReport}
+            dedupeMode={dedupeMode}
+            setDedupeMode={setDedupeMode}
+            loadingDedupe={loadingDedupe}
+            handleSafeDelete={handleSafeDelete}
+            semanticThreshold={semanticThreshold}
+            setSemanticThreshold={setSemanticThreshold}
+            loadingSemantic={loadingSemantic}
+            semanticDuplicates={semanticDuplicates}
+            fetchSemanticDedupe={fetchSemanticDedupe}
+            staleAgeDays={staleAgeDays}
+            setStaleAgeDays={setStaleAgeDays}
+            loadingStale={loadingStale}
+            staleOrphans={staleOrphans}
+            auditLogs={auditLogs}
+            sources={sources}
+            handleUndo={handleUndo}
+            actionLoading={actionLoading}
+            formatSize={formatSize}
+            formatDate={formatDate}
+          />
         )}
 
-        {/* Tab 3: Stale Orphans */}
-        {activeTab === "stale" && (
-          <section className="glass-card" style={{ gap: "1.5rem" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: "1.25rem" }}>Stale / Orphan File Report</h3>
-                <p style={{ margin: "0.25rem 0 0 0", color: "var(--text-secondary)", fontSize: "0.9rem" }}>
-                  Unique files present on only one device that have not been modified for a long time.
-                </p>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Stale Age Threshold:</span>
-                <select 
-                  className="search-input" 
-                  style={{ width: "120px", height: "36px", paddingLeft: "0.5rem", borderRadius: "6px" }}
-                  value={staleAgeDays}
-                  onChange={(e) => setStaleAgeDays(Number(e.target.value))}
-                >
-                  <option value={30}>30 Days</option>
-                  <option value={90}>90 Days</option>
-                  <option value={180}>180 Days</option>
-                  <option value={365}>1 Year</option>
-                </select>
-              </div>
-            </div>
-
-            {loadingStale ? (
-              <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-secondary)" }}>
-                <RefreshCw size={24} className="animate-spin" style={{ margin: "0 auto 1rem" }} />
-                Analyzing unique file records...
-              </div>
-            ) : staleOrphans.length === 0 ? (
-              <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-                No stale orphan files found.
-              </div>
-            ) : (
-              <div className="table-container">
-                <table className="file-table">
-                  <thead>
-                    <tr>
-                      <th>File Name & Path</th>
-                      <th>Size</th>
-                      <th>Source Device</th>
-                      <th>Last Modified</th>
-                      <th style={{ textAlign: "right" }}>Age</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {staleOrphans.map(file => (
-                      <tr key={file.id}>
-                        <td>
-                          <div className="file-name-cell">
-                            <FileCode size={20} style={{ color: "var(--text-secondary)" }} />
-                            <div>
-                              <div>{file.relative_path}</div>
-                              <div className="file-path">{file.path}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td>{formatSize(file.size_bytes)}</td>
-                        <td><strong>{file.source_name}</strong></td>
-                        <td>{formatDate(file.mtime)}</td>
-                        <td style={{ textAlign: "right", color: "var(--danger)", fontWeight: 600 }}>
-                          {file.age_days} Days Old
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* Tab 4: Audit Logs View */}
-        {activeTab === "audit" && (
-          <section className="glass-card" style={{ padding: 0 }}>
-            <div className="table-container">
-              <table className="file-table">
-                <thead>
-                  <tr>
-                    <th>Timestamp</th>
-                    <th>Action</th>
-                    <th>File</th>
-                    <th>From Device</th>
-                    <th>To Device</th>
-                    <th>Status</th>
-                    <th style={{ textAlign: "right" }}>Revert</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {auditLogs.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
-                        No audit records yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    auditLogs.map((log) => {
-                      const logSrcName = sources.find(s => s.id === log.source)?.name || `ID: ${log.source.substring(0,6)}`;
-                      const logDstName = sources.find(s => s.id === log.destination)?.name || `ID: ${log.destination.substring(0,6)}`;
-                      return (
-                        <tr key={log.id}>
-                          <td>{formatDate(log.timestamp)}</td>
-                          <td style={{ fontWeight: 600 }}>{log.action_type.toUpperCase()}</td>
-                          <td className="file-path">{log.file_path}</td>
-                          <td>{logSrcName}</td>
-                          <td>{logDstName}</td>
-                          <td>
-                            <span className={`audit-status ${log.status.toLowerCase()}`}>
-                              {log.status}
-                            </span>
-                          </td>
-                          <td style={{ textAlign: "right" }}>
-                            {log.status === "completed" && (log.action_type === "copy" || log.action_type === "move") ? (
-                              <button 
-                                className="btn btn-sm btn-danger"
-                                onClick={() => handleUndo(log.id)}
-                                disabled={actionLoading}
-                              >
-                                <Undo size={14} />
-                                Undo
-                              </button>
-                            ) : log.status === "undone" ? (
-                              <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Reverted</span>
-                            ) : (
-                              "-"
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-        {/* Tab 5: Transaction Plans View */}
         {activeTab === "plans" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr", gap: "1.5rem" }}>
-            {/* Left side: List of plans + Create Plan */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-              <section className="glass-card" style={{ gap: "1rem" }}>
-                <h3 style={{ margin: 0, fontSize: "1.1rem" }}>Create New Transaction Plan</h3>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                  <input
-                    type="text"
-                    className="search-input"
-                    placeholder="Plan Name (e.g. PC-A Sync Plan)"
-                    value={draftPlanName}
-                    onChange={(e) => setDraftPlanName(e.target.value)}
-                    style={{ width: "100%", height: "40px", borderRadius: "8px", paddingLeft: "0.75rem" }}
-                  />
-                  <div style={{ border: "1px dashed rgba(255,255,255,0.08)", borderRadius: "8px", padding: "0.75rem", minHeight: "80px", backgroundColor: "rgba(0,0,0,0.1)" }}>
-                    <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>Draft Queue ({draftPlanItems.length} items):</div>
-                    {draftPlanItems.length === 0 ? (
-                      <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Use "Add to Plan" button (+ Plan) on Dashboard files to queue copy/move steps.</span>
-                    ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", maxHeight: "150px", overflowY: "auto" }}>
-                        {draftPlanItems.map((item, idx) => (
-                          <div key={idx} style={{ fontSize: "0.8rem", display: "flex", justifyContent: "space-between", backgroundColor: "rgba(255,255,255,0.03)", padding: "0.25rem 0.5rem", borderRadius: "4px" }}>
-                            <span className="file-path" style={{ maxWidth: "200px" }}>{item.file_path}</span>
-                            <span style={{ color: "var(--accent-cyan)", fontWeight: 600 }}>{item.action_type.toUpperCase()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    className="btn btn-primary"
-                    onClick={handleCreatePlan}
-                    disabled={draftPlanItems.length === 0 || !draftPlanName.trim()}
-                    style={{ width: "100%", height: "40px", borderRadius: "8px", fontWeight: "600" }}
-                  >
-                    Save Draft Plan
-                  </button>
-                </div>
-              </section>
-
-              <section className="glass-card" style={{ gap: "1rem" }}>
-                <h3 style={{ margin: 0, fontSize: "1.1rem" }}>Saved Execution Plans</h3>
-                {loadingPlans ? (
-                  <div style={{ textAlign: "center", color: "var(--text-muted)" }}>Loading plans...</div>
-                ) : plans.length === 0 ? (
-                  <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", textAlign: "center", padding: "1rem" }}>No saved plans.</div>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                    {plans.map(p => (
-                      <div
-                        key={p.id}
-                        onClick={() => handleSelectPlan(p.id)}
-                        style={{
-                          padding: "1rem",
-                          borderRadius: "8px",
-                          cursor: "pointer",
-                          border: selectedPlan?.id === p.id ? "1px solid var(--accent-cyan)" : "1px solid transparent",
-                          backgroundColor: selectedPlan?.id === p.id ? "rgba(0,188,212,0.05)" : "rgba(255,255,255,0.02)"
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <strong style={{ fontSize: "0.95rem" }}>{p.name}</strong>
-                          <span className={`audit-status ${p.status.toLowerCase()}`}>{p.status}</span>
-                        </div>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.5rem" }}>
-                          <span>Items: {p.items.length}</span>
-                          <span>{new Date(p.created_at).toLocaleDateString()}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-            </div>
-
-            {/* Right side: Plan Details & Actions */}
-            <div>
-              {selectedPlan ? (
-                <section className="glass-card" style={{ gap: "1.25rem", height: "100%" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "0.75rem" }}>
-                    <div>
-                      <h3 style={{ margin: 0, fontSize: "1.25rem" }}>{selectedPlan.name}</h3>
-                      <span style={{ fontSize: "0.8", color: "var(--text-muted)" }}>ID: {selectedPlan.id}</span>
-                    </div>
-                    <span className={`audit-status ${selectedPlan.status.toLowerCase()}`} style={{ fontSize: "0.9rem" }}>{selectedPlan.status.toUpperCase()}</span>
-                  </div>
-
-                  <div style={{ display: "flex", gap: "0.75rem" }}>
-                    {(selectedPlan.status === "draft" || selectedPlan.status === "failed") && (
-                      <button
-                        className="btn btn-primary"
-                        style={{ flex: 1, height: "42px", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}
-                        onClick={() => handleApprovePlan(selectedPlan.id)}
-                        disabled={actionLoading}
-                      >
-                        <CheckCircle size={16} /> Approve & Run Plan
-                      </button>
-                    )}
-                    {(selectedPlan.status === "completed" || selectedPlan.status === "failed") && (
-                      <button
-                        className="btn btn-danger"
-                        style={{ flex: 1, height: "42px", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.35rem" }}
-                        onClick={() => handleUndoPlan(selectedPlan.id)}
-                        disabled={actionLoading}
-                      >
-                        <Undo size={16} /> Rollback/Undo Plan
-                      </button>
-                    )}
-                  </div>
-
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", maxHeight: "400px", overflowY: "auto" }}>
-                    <h4 style={{ margin: 0, fontSize: "0.95rem", color: "var(--text-secondary)" }}>Plan Execution Steps:</h4>
-                    {selectedPlan.items.map((item: any, idx: number) => (
-                      <div
-                        key={item.id}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          padding: "0.75rem 1rem",
-                          borderRadius: "8px",
-                          backgroundColor: "rgba(255,255,255,0.015)"
-                        }}
-                      >
-                        <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Step {idx + 1}</span>
-                          <strong style={{ fontSize: "0.9rem" }} className="file-path">{item.file_path}</strong>
-                          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Action: {item.action_type.toUpperCase()}</span>
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <span className={`audit-status ${item.status.toLowerCase()}`}>{item.status}</span>
-                          {item.error_message && (
-                            <div style={{ color: "var(--danger)", fontSize: "0.75rem", marginTop: "0.25rem" }}>{item.error_message}</div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ) : (
-                <section className="glass-card" style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "300px", color: "var(--text-muted)" }}>
-                  Select a plan on the left to inspect configuration, logs, and trigger transactions.
-                </section>
-              )}
-            </div>
-          </div>
+          <PlansView
+            draftPlanName={draftPlanName}
+            setDraftPlanName={setDraftPlanName}
+            draftPlanItems={draftPlanItems}
+            handleCreatePlan={handleCreatePlan}
+            loadingPlans={loadingPlans}
+            plans={plans}
+            handleSelectPlan={handleSelectPlan}
+            selectedPlan={selectedPlan}
+            handleApprovePlan={handleApprovePlan}
+            handleUndoPlan={handleUndoPlan}
+            actionLoading={actionLoading}
+          />
         )}
       </main>
 

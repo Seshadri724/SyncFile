@@ -68,7 +68,18 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
     if user.hashed_password != hashed:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-    token = f"user:{user.id}"
+    import jwt
+    import datetime
+    from app.config import settings
+
+    payload = {
+        "sub": user.id,
+        "role": user.role,
+        "org_id": user.org_id,
+        "exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=7)
+    }
+    token = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
     response.set_cookie(
         key="setsync_session",
         value=token,

@@ -1,10 +1,10 @@
 import uuid
 import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
-from app.dependencies import verify_token
+from app.dependencies import verify_token, get_current_org_id
 from app.models.plan import Plan, PlanItem
 from app.schemas.plans import PlanCreate, PlanResponse
 from app.services.action_service import execute_action as service_execute_action, undo_action as service_undo_action
@@ -19,12 +19,14 @@ router = APIRouter(
 )
 
 @router.post("", response_model=PlanResponse, status_code=status.HTTP_201_CREATED)
-async def create_plan(payload: PlanCreate, db: AsyncSession = Depends(get_db)):
+async def create_plan(payload: PlanCreate, request: Request, db: AsyncSession = Depends(get_db), token: str = Depends(verify_token)):
+    org_id = get_current_org_id(token)
     plan_id = str(uuid.uuid4())
     
     new_plan = Plan(
         id=plan_id,
         name=payload.name,
+        org_id=org_id,
         status="draft"
     )
     db.add(new_plan)
@@ -33,10 +35,17 @@ async def create_plan(payload: PlanCreate, db: AsyncSession = Depends(get_db)):
     for idx, item in enumerate(payload.items):
         # 1. Fetch file record size and hash if present to check rules
         from app.models.source import Source
-        from app.services.encryption import get_tenant_key, encrypt_deterministic
+        from app.services.encryption import get_tenant_key_from_header, encrypt_deterministic
         source = await db.get(Source, item.source_id)
-        org_id = source.org_id if source else None
-        key = get_tenant_key(org_id)
+        source_org_id = source.org_id if source else None
+        
+        # Verify user has access to source
+        if org_id and source_org_id != org_id:
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Access denied to source in item {idx + 1}")
+            
+        tenant_key_hex = getattr(request.state, 'tenant_key', None)
+        key = get_tenant_key_from_header(tenant_key_hex, source_org_id)
         encrypted_rel_path = encrypt_deterministic(item.file_path, key)
 
         file_stmt = select(FileRecord).where(
@@ -73,6 +82,7 @@ async def create_plan(payload: PlanCreate, db: AsyncSession = Depends(get_db)):
         plan_item = PlanItem(
             id=str(uuid.uuid4()),
             plan_id=plan_id,
+            org_id=org_id,
             action_type=item.action_type,
             file_path=item.file_path,
             source_id=item.source_id,
@@ -93,23 +103,38 @@ async def create_plan(payload: PlanCreate, db: AsyncSession = Depends(get_db)):
     return full_plan.to_dict()
 
 @router.get("", response_model=List[PlanResponse])
-async def list_plans(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Plan).order_by(Plan.created_at.desc()))
+async def list_plans(db: AsyncSession = Depends(get_db), token: str = Depends(verify_token)):
+    org_id = get_current_org_id(token)
+    if org_id:
+        result = await db.execute(
+            select(Plan).where(Plan.org_id == org_id).order_by(Plan.created_at.desc())
+        )
+    else:
+        result = await db.execute(select(Plan).order_by(Plan.created_at.desc()))
     plans = result.scalars().all()
     return [p.to_dict() for p in plans]
 
 @router.get("/{id}", response_model=PlanResponse)
-async def get_plan(id: str, db: AsyncSession = Depends(get_db)):
+async def get_plan(id: str, db: AsyncSession = Depends(get_db), token: str = Depends(verify_token)):
+    org_id = get_current_org_id(token)
     plan = await db.get(Plan, id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
+        
+    if org_id and plan.org_id != org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+        
     return plan.to_dict()
 
 @router.post("/{id}/approve", response_model=PlanResponse)
-async def approve_and_run_plan(id: str, db: AsyncSession = Depends(get_db)):
+async def approve_and_run_plan(id: str, db: AsyncSession = Depends(get_db), token: str = Depends(verify_token)):
+    org_id = get_current_org_id(token)
     plan = await db.get(Plan, id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
+        
+    if org_id and plan.org_id != org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
         
     if plan.status not in ["draft", "failed"]:
         raise HTTPException(status_code=400, detail=f"Cannot run plan in status: {plan.status}")
@@ -156,10 +181,14 @@ async def approve_and_run_plan(id: str, db: AsyncSession = Depends(get_db)):
     return plan.to_dict()
 
 @router.post("/{id}/undo", response_model=PlanResponse)
-async def rollback_plan(id: str, db: AsyncSession = Depends(get_db)):
+async def rollback_plan(id: str, db: AsyncSession = Depends(get_db), token: str = Depends(verify_token)):
+    org_id = get_current_org_id(token)
     plan = await db.get(Plan, id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
+        
+    if org_id and plan.org_id != org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
         
     if plan.status not in ["completed", "failed"]:
         raise HTTPException(status_code=400, detail=f"Cannot rollback plan in status: {plan.status}")

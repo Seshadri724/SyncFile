@@ -8,6 +8,7 @@ class Plan(Base):
     
     id = Column(String(36), primary_key=True, index=True)
     name = Column(String(100), nullable=False)
+    org_id = Column(String(36), nullable=True, index=True)
     status = Column(String(30), default="draft")  # draft, approved, executing, completed, failed, undone
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
@@ -18,6 +19,7 @@ class Plan(Base):
         return {
             "id": self.id,
             "name": self.name,
+            "org_id": self.org_id,
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -29,6 +31,7 @@ class PlanItem(Base):
     
     id = Column(String(36), primary_key=True, index=True)
     plan_id = Column(String(36), ForeignKey("plans.id"), nullable=False)
+    org_id = Column(String(36), nullable=True, index=True)
     action_type = Column(String(20), nullable=False)  # copy, move, delete
     file_path = Column(String(255), nullable=False)
     source_id = Column(String(36), nullable=False)
@@ -44,6 +47,7 @@ class PlanItem(Base):
         return {
             "id": self.id,
             "plan_id": self.plan_id,
+            "org_id": self.org_id,
             "action_type": self.action_type,
             "file_path": self.file_path,
             "source_id": self.source_id,

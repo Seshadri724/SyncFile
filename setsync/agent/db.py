@@ -75,6 +75,22 @@ def get_config(key: str) -> Optional[str]:
     return None
 
 def set_config(key: str, value: str):
+    if key in ["tenant_key", "agent_key", "api_token"]:
+        try:
+            import keyring
+            keyring.set_password("setsync", key, value)
+            
+            # Prune plaintext sqlite backups to prevent leakage
+            conn = sqlite3.connect(AGENT_DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM config WHERE key = ?", (key,))
+            conn.commit()
+            conn.close()
+            return
+        except Exception as e:
+            print(f"[Warning] Keyring storage failed: {e}. Falling back to unencrypted storage.")
+            pass
+
     conn = sqlite3.connect(AGENT_DB_PATH)
     cursor = conn.cursor()
     cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, value))

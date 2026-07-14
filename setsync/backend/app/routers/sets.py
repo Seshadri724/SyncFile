@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import verify_token
@@ -22,6 +22,7 @@ async def trigger_recompute(
 
 @router.get("/view", response_model=SetViewResponse)
 async def view_sets(
+    request: Request,
     source_x: str = Query(..., description="Source X (left device ID)"),
     source_y: str = Query(..., description="Source Y (right device ID)"),
     type: str = Query("union", description="Type of view: union, intersection, only_a, only_b, conflicts"),
@@ -33,6 +34,7 @@ async def view_sets(
     db: AsyncSession = Depends(get_db)
 ):
     try:
+        tenant_key_hex = getattr(request.state, 'tenant_key', None)
         summary = await get_summary_from_db(db, source_x, source_y)
         files = await get_computed_sets_from_db(
             db, 
@@ -43,7 +45,8 @@ async def view_sets(
             min_size=min_size, 
             max_size=max_size,
             limit=limit,
-            offset=offset
+            offset=offset,
+            tenant_key_hex=tenant_key_hex
         )
         return SetViewResponse(summary=summary, files=files)
     except Exception as e:
@@ -51,13 +54,15 @@ async def view_sets(
 
 @router.get("/search", response_model=List[UnifiedFileRow])
 async def search_files(
+    request: Request,
     source_x: str = Query(..., description="Source X (left device ID)"),
     source_y: str = Query(..., description="Source Y (right device ID)"),
     q: str = Query(..., description="Search query"),
     db: AsyncSession = Depends(get_db)
 ):
     try:
+        tenant_key_hex = getattr(request.state, 'tenant_key', None)
         # Search across all union records for these two sources
-        return await get_computed_sets_from_db(db, source_x=source_x, source_y=source_y, view_type="union", q=q)
+        return await get_computed_sets_from_db(db, source_x=source_x, source_y=source_y, view_type="union", q=q, tenant_key_hex=tenant_key_hex)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

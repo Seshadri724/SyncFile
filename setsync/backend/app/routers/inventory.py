@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
@@ -16,6 +16,7 @@ router = APIRouter(
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
 async def upload_inventory(
     upload: InventoryUpload,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     # Verify source exists
@@ -26,13 +27,15 @@ async def upload_inventory(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Source with id '{upload.source_id}' not found."
         )
-        
-    count = await handle_inventory_upload(db, upload, org_id=source.org_id)
+    
+    tenant_key_hex = getattr(request.state, 'tenant_key', None)
+    count = await handle_inventory_upload(db, upload, org_id=source.org_id, tenant_key_hex=tenant_key_hex)
     return {"message": "Inventory uploaded successfully", "records_ingested": count}
 
 @router.patch("/delta", status_code=status.HTTP_200_OK)
 async def patch_inventory_delta(
     delta: InventoryDelta,
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     # Verify source exists
@@ -49,7 +52,8 @@ async def patch_inventory_delta(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="action must be 'upsert' or 'delete'"
         )
-    await handle_inventory_delta(db, delta, org_id=source.org_id)
+    tenant_key_hex = getattr(request.state, 'tenant_key', None)
+    await handle_inventory_delta(db, delta, org_id=source.org_id, tenant_key_hex=tenant_key_hex)
     return {"message": f"Inventory delta processed successfully: {delta.action} on {delta.file.relative_path}"}
 
 @router.get("/status", response_model=InventoryStatusResponse)

@@ -139,14 +139,15 @@ async def get_computed_sets_from_db(
     min_size: Optional[int] = None,
     max_size: Optional[int] = None,
     limit: Optional[int] = None,
-    offset: Optional[int] = None
+    offset: Optional[int] = None,
+    tenant_key_hex: Optional[str] = None
 ) -> List[UnifiedFileRow]:
     from app.models.source import Source
-    from app.services.encryption import get_tenant_key, decrypt_deterministic
+    from app.services.encryption import get_tenant_key_from_header, decrypt_deterministic
 
     source = await db.get(Source, source_x)
     org_id = source.org_id if source else None
-    key = get_tenant_key(org_id)
+    key = get_tenant_key_from_header(tenant_key_hex, org_id)
 
     base_sql = _get_base_query(view_type)
     

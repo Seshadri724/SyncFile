@@ -6,12 +6,24 @@ from typing import List, Dict, Any, Optional
 from agent.db import get_cached_file, update_cached_file, update_scanned_time, delete_stale_cache
 
 def calculate_sha256(filepath: Path) -> str:
-    """Computes SHA-256 of a file using chunked reads."""
-    sha256 = hashlib.sha256()
+    """Computes a secure, zero-knowledge HMAC-SHA-256 of a file using the tenant key."""
+    import hmac
+    from agent.config import get_agent_config
+    tenant_key_hex = get_agent_config("tenant_key")
+    
+    if tenant_key_hex and len(tenant_key_hex) == 64:
+        try:
+            key = bytes.fromhex(tenant_key_hex)
+        except ValueError:
+            key = b"setsync_default_salt_key_fallback"
+    else:
+        key = b"setsync_default_salt_key_fallback"
+        
+    h = hmac.new(key, digestmod=hashlib.sha256)
     with open(filepath, "rb") as f:
-        while chunk := f.read(8192):
-            sha256.update(chunk)
-    return sha256.hexdigest()
+        while chunk := f.read(1024 * 1024):
+            h.update(chunk)
+    return h.hexdigest()
 
 def compute_dhash(image_path: Path) -> Optional[str]:
     """Computes a 64-bit difference hash (dHash) for an image using PIL.

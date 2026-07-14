@@ -15,17 +15,20 @@ class FileRecord(Base):
     hash_sha256 = Column(String, nullable=False)
     image_hash = Column(String(16), nullable=True) # 16 character hex string dHash
     scanned_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    org_id = Column(String, ForeignKey("organizations.id"), nullable=True)
 
     __table_args__ = (
         UniqueConstraint('source_id', 'relative_path', name='_source_id_relative_path_uc'),
         Index('idx_file_records_hash', 'source_id', 'hash_sha256'),
         Index('idx_file_records_path', 'source_id', 'relative_path'),
         Index('idx_file_records_hash_sha256', 'hash_sha256'),
+        Index('idx_file_records_org_id', 'org_id'),
     )
 
     def to_dict(self, org_id: str = None):
         from app.services.encryption import get_tenant_key, decrypt_deterministic
-        key = get_tenant_key(org_id)
+        resolved_org = self.org_id or org_id
+        key = get_tenant_key(resolved_org)
         return {
             "id": self.id,
             "source_id": self.source_id,
@@ -35,5 +38,6 @@ class FileRecord(Base):
             "mtime": self.mtime.isoformat() if self.mtime else None,
             "hash_sha256": self.hash_sha256,
             "image_hash": self.image_hash,
+            "org_id": self.org_id,
             "scanned_at": self.scanned_at.isoformat() if self.scanned_at else None,
         }

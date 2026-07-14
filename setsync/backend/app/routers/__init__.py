@@ -9,6 +9,7 @@ from app.routers.query import router as query_router
 from app.routers.plans import router as plans_router
 from app.routers.semantic import router as semantic_router
 from app.routers.auth import router as auth_router
+from app.routers.chunked_transfer import router as chunked_transfer_router
 
 __all__ = [
     "inventory_router",
@@ -22,4 +23,5 @@ __all__ = [
     "plans_router",
     "semantic_router",
     "auth_router",
+    "chunked_transfer_router",
 ]

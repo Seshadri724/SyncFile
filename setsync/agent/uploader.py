@@ -10,9 +10,10 @@ from agent.config import get_agent_config
 def get_auth_headers(payload_data: str = None) -> Dict[str, str]:
     source_id = get_agent_config("source_id")
     agent_key = get_agent_config("agent_key")
+    tenant_key = get_agent_config("tenant_key")
     
     if source_id and agent_key:
-        return {
+        headers = {
             "X-SetSync-Source-ID": source_id,
             "X-SetSync-Agent-Key": agent_key,
             "Content-Type": "application/json"
@@ -26,11 +27,17 @@ def get_auth_headers(payload_data: str = None) -> Dict[str, str]:
             message.encode("utf-8"),
             hashlib.sha256
         ).hexdigest()
-        return {
+        headers = {
             "X-SetSync-Timestamp": timestamp,
             "X-SetSync-Signature": sig,
             "Content-Type": "application/json"
         }
+    
+    # Attach zero-knowledge tenant encryption key if configured
+    if tenant_key:
+        headers["X-SetSync-Tenant-Key"] = tenant_key
+    
+    return headers
 
 def upload_inventory_data(files: List[Dict[str, Any]], source_id_arg: str = None) -> Dict[str, Any]:
     core_url = get_agent_config("core_url", "http://localhost:8000")

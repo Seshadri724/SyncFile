@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Request as FastAPIRequest, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import verify_token
@@ -33,15 +33,17 @@ async def dry_run_action(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.post("/copy", response_model=ActionResponse)
-async def copy_file(request: ActionRequest, db: AsyncSession = Depends(get_db)):
+async def copy_file(request: ActionRequest, http_request: FastAPIRequest, db: AsyncSession = Depends(get_db)):
     try:
+        tenant_key_hex = getattr(http_request.state, 'tenant_key', None)
         action_rec = await execute_action(
             db,
             relative_path=request.file_path,
             source=request.source,
             destination=request.destination,
             action_type="copy",
-            triggered_by=request.triggered_by or "ui"
+            triggered_by=request.triggered_by or "ui",
+            tenant_key_hex=tenant_key_hex
         )
         return action_rec.to_dict()
     except FileNotFoundError as e:
@@ -50,15 +52,17 @@ async def copy_file(request: ActionRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.post("/move", response_model=ActionResponse)
-async def move_file(request: ActionRequest, db: AsyncSession = Depends(get_db)):
+async def move_file(request: ActionRequest, http_request: FastAPIRequest, db: AsyncSession = Depends(get_db)):
     try:
+        tenant_key_hex = getattr(http_request.state, 'tenant_key', None)
         action_rec = await execute_action(
             db,
             relative_path=request.file_path,
             source=request.source,
             destination=request.destination,
             action_type="move",
-            triggered_by=request.triggered_by or "ui"
+            triggered_by=request.triggered_by or "ui",
+            tenant_key_hex=tenant_key_hex
         )
         return action_rec.to_dict()
     except FileNotFoundError as e:
@@ -69,10 +73,12 @@ async def move_file(request: ActionRequest, db: AsyncSession = Depends(get_db)):
 @router.post("/delete", response_model=ActionResponse)
 async def delete_file(
     request: ActionRequest,
+    http_request: FastAPIRequest,
     force: bool = Query(False, description="Force delete unique content hashes"),
     db: AsyncSession = Depends(get_db)
 ):
     try:
+        tenant_key_hex = getattr(http_request.state, 'tenant_key', None)
         action_rec = await execute_action(
             db,
             relative_path=request.file_path,
@@ -80,7 +86,8 @@ async def delete_file(
             destination=request.destination,
             action_type="delete",
             triggered_by=request.triggered_by or "ui",
-            force=force
+            force=force,
+            tenant_key_hex=tenant_key_hex
         )
         return action_rec.to_dict()
     except FileNotFoundError as e:

@@ -1,5 +1,5 @@
 import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.database import get_db
@@ -19,8 +19,10 @@ router = APIRouter(
 )
 
 @router.get("/duplicates", response_model=DuplicateAnalysisResponse)
-async def get_duplicates(db: AsyncSession = Depends(get_db)):
+async def get_duplicates(request: Request, db: AsyncSession = Depends(get_db)):
     try:
+        tenant_key_hex = getattr(request.state, 'tenant_key', None)
+        
         # 1. Fetch all hashes that have more than 1 occurrence
         stmt = (
             select(FileRecord.hash_sha256, FileRecord.size_bytes, func.count(FileRecord.id).label("cnt"))
@@ -56,8 +58,8 @@ async def get_duplicates(db: AsyncSession = Depends(get_db)):
                     source_names[r.source_id] = src.name if src else "Unknown Source"
                     source_orgs[r.source_id] = src.org_id if src else None
                 
-                from app.services.encryption import get_tenant_key, decrypt_deterministic
-                key = get_tenant_key(source_orgs[r.source_id])
+                from app.services.encryption import get_tenant_key_from_header, decrypt_deterministic
+                key = get_tenant_key_from_header(tenant_key_hex, source_orgs[r.source_id])
                 
                 file_entries.append(DuplicateFileEntry(
                     id=r.id,
@@ -92,10 +94,13 @@ async def get_duplicates(db: AsyncSession = Depends(get_db)):
 
 @router.get("/stale-orphans", response_model=List[StaleOrphanEntry])
 async def get_stale_orphans(
+    request: Request,
     age_days: int = Query(180, ge=1, description="Minimum age of file in days since last modification"),
     db: AsyncSession = Depends(get_db)
 ):
     try:
+        tenant_key_hex = getattr(request.state, 'tenant_key', None)
+        
         # Find files where:
         # 1. No other file has the same hash (orphan/unique)
         # 2. mtime is older than cutoff
@@ -133,8 +138,8 @@ async def get_stale_orphans(
                 source_names[r.source_id] = src.name if src else "Unknown Source"
                 source_orgs[r.source_id] = src.org_id if src else None
                 
-            from app.services.encryption import get_tenant_key, decrypt_deterministic
-            key = get_tenant_key(source_orgs[r.source_id])
+            from app.services.encryption import get_tenant_key_from_header, decrypt_deterministic
+            key = get_tenant_key_from_header(tenant_key_hex, source_orgs[r.source_id])
             
             delta = now - r.mtime
             entries.append(StaleOrphanEntry(
@@ -242,10 +247,13 @@ async def get_fleet_analysis(
 
 @router.get("/governance", response_model=GovernanceResponse)
 async def get_governance_analysis(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     token: str = Depends(verify_token)
 ):
     try:
+        tenant_key_hex = getattr(request.state, 'tenant_key', None)
+        
         # Resolve org_id constraint
         org_id = None
         if token.startswith("user:"):
@@ -271,8 +279,8 @@ async def get_governance_analysis(
         source_orgs = {s.id: s.org_id for s in sources}
         flagged_files = []
         for r in records:
-            from app.services.encryption import get_tenant_key, decrypt_deterministic
-            key = get_tenant_key(source_orgs.get(r.source_id))
+            from app.services.encryption import get_tenant_key_from_header, decrypt_deterministic
+            key = get_tenant_key_from_header(tenant_key_hex, source_orgs.get(r.source_id))
             decrypted_rel_path = decrypt_deterministic(r.relative_path, key) or ""
             decrypted_path = decrypt_deterministic(r.path, key) or ""
             

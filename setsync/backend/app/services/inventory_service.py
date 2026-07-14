@@ -5,15 +5,15 @@ from app.models.source import Source
 from app.schemas.inventory import InventoryUpload, InventoryDelta
 from typing import List, Optional
 import datetime
-from app.services.encryption import get_tenant_key, encrypt_deterministic
+from app.services.encryption import get_tenant_key_from_header, encrypt_deterministic
 
-async def handle_inventory_upload(db: AsyncSession, upload: InventoryUpload, org_id: Optional[str] = None) -> int:
+async def handle_inventory_upload(db: AsyncSession, upload: InventoryUpload, org_id: Optional[str] = None, tenant_key_hex: Optional[str] = None) -> int:
     try:
         # Delete existing records for this source
         await db.execute(delete(FileRecord).where(FileRecord.source_id == upload.source_id))
         
-        # Derive key
-        key = get_tenant_key(org_id)
+        # Derive key — client-provided key takes priority (zero-knowledge)
+        key = get_tenant_key_from_header(tenant_key_hex, org_id)
         
         # Insert new records
         for item in upload.files:
@@ -25,6 +25,7 @@ async def handle_inventory_upload(db: AsyncSession, upload: InventoryUpload, org
                 mtime=item.mtime,
                 hash_sha256=item.hash_sha256,
                 image_hash=item.image_hash,
+                org_id=org_id,
             )
             db.add(db_item)
         
@@ -34,9 +35,9 @@ async def handle_inventory_upload(db: AsyncSession, upload: InventoryUpload, org
         await db.rollback()
         raise e
 
-async def handle_inventory_delta(db: AsyncSession, delta: InventoryDelta, org_id: Optional[str] = None) -> None:
+async def handle_inventory_delta(db: AsyncSession, delta: InventoryDelta, org_id: Optional[str] = None, tenant_key_hex: Optional[str] = None) -> None:
     try:
-        key = get_tenant_key(org_id)
+        key = get_tenant_key_from_header(tenant_key_hex, org_id)
         encrypted_rel_path = encrypt_deterministic(delta.file.relative_path, key)
         
         # Search for existing record by encrypted relative path on source
@@ -65,7 +66,8 @@ async def handle_inventory_delta(db: AsyncSession, delta: InventoryDelta, org_id
                     size_bytes=delta.file.size_bytes,
                     mtime=delta.file.mtime,
                     hash_sha256=delta.file.hash_sha256,
-                    image_hash=delta.file.image_hash
+                    image_hash=delta.file.image_hash,
+                    org_id=org_id,
                 )
                 db.add(db_item)
         await db.commit()

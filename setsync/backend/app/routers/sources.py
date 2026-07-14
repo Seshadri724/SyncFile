@@ -1,6 +1,6 @@
 import secrets
 import hashlib
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
@@ -71,6 +71,7 @@ async def list_sources(
 @router.post("/{id}/decommission")
 async def decommission_source(
     id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     token: str = Depends(require_role(["admin"])) # Admin only
 ):
@@ -110,8 +111,9 @@ async def decommission_source(
         other_copy = other_res.scalar_one_or_none()
         
         if not other_copy:
-            from app.services.encryption import get_tenant_key, decrypt_deterministic
-            key = get_tenant_key(source.org_id)
+            from app.services.encryption import get_tenant_key_from_header, decrypt_deterministic
+            tenant_key_hex = getattr(request.state, 'tenant_key', None)
+            key = get_tenant_key_from_header(tenant_key_hex, source.org_id)
             unique_files.append({
                 "path": decrypt_deterministic(f.path, key),
                 "relative_path": decrypt_deterministic(f.relative_path, key),

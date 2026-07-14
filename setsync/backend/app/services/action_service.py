@@ -86,14 +86,15 @@ async def execute_action(
     destination: str,  # destination_id
     action_type: str,  # "copy", "move", "delete"
     triggered_by: str = "ui",
-    force: bool = False
+    force: bool = False,
+    tenant_key_hex: str = None
 ) -> ActionRecord:
     # 1. Fetch file record to find metadata (size, hash)
     from app.models.source import Source
-    from app.services.encryption import get_tenant_key, encrypt_deterministic
+    from app.services.encryption import get_tenant_key_from_header, encrypt_deterministic
     src_obj = await db.get(Source, source)
     org_id = src_obj.org_id if src_obj else None
-    key = get_tenant_key(org_id)
+    key = get_tenant_key_from_header(tenant_key_hex, org_id)
     encrypted_rel_path = encrypt_deterministic(relative_path, key)
 
     file_stmt = select(FileRecord).where(

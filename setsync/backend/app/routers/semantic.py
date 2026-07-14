@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
@@ -39,10 +39,12 @@ def compute_hamming_distance(hex1: str, hex2: str) -> int:
 
 @router.get("/semantic-duplicates", response_model=List[SemanticDuplicateGroup])
 async def get_semantic_duplicates(
+    request: Request,
     threshold: int = Query(10, ge=0, le=64, description="Maximum Hamming distance threshold for similarity"),
     db: AsyncSession = Depends(get_db)
 ):
     try:
+        tenant_key_hex = getattr(request.state, 'tenant_key', None)
         # 1. Fetch all file records containing an image hash
         stmt = select(FileRecord).where(FileRecord.image_hash != None)
         result = await db.execute(stmt)
@@ -73,8 +75,8 @@ async def get_semantic_duplicates(
                     break
             
             src_name, src_org = await get_source_info(r.source_id)
-            from app.services.encryption import get_tenant_key, decrypt_deterministic
-            key = get_tenant_key(src_org)
+            from app.services.encryption import get_tenant_key_from_header, decrypt_deterministic
+            key = get_tenant_key_from_header(tenant_key_hex, src_org)
             
             entry = SemanticFileEntry(
                 id=r.id,

@@ -18,6 +18,7 @@ class TransferJob(Base):
     target_signatures = Column(Text, nullable=True) # JSON field mapping Adler to lists of SHA256 and block index
     delta_ops = Column(Text, nullable=True)         # JSON field mapping of computed delta operations list
     error_message = Column(Text, nullable=True)
+    transfer_session_id = Column(String, nullable=True) # References the chunked upload session ID
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
 
     def to_dict(self):
@@ -31,5 +32,6 @@ class TransferJob(Base):
             "target_signatures": json.loads(self.target_signatures) if self.target_signatures else None,
             "delta_ops": json.loads(self.delta_ops) if self.delta_ops else None,
             "error_message": self.error_message,
+            "transfer_session_id": self.transfer_session_id,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
         }

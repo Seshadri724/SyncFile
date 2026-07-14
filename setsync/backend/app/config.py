@@ -4,7 +4,29 @@ from pathlib import Path
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./setsync.db"
+    DATABASE_POOL_SIZE: int = 20
+    DATABASE_MAX_OVERFLOW: int = 10
+    DATABASE_POOL_TIMEOUT: int = 30
     API_TOKEN: str = "setsync_secret_token_123"
+    
+    # Pluggable Storage settings
+    STORAGE_BACKEND: str = "local"
+    R2_ACCOUNT_ID: str = ""
+    R2_ACCESS_KEY_ID: str = ""
+    R2_SECRET_ACCESS_KEY: str = ""
+    R2_BUCKET_NAME: str = "setsync-staging"
+    R2_ENDPOINT_URL: str = ""
+    
+    # Per-tenant staging storage quota in bytes (Default: 5 GB)
+    TENANT_STORAGE_QUOTA_BYTES: int = 5 * 1024 * 1024 * 1024
+    
+    # Cryptographic JWT Settings
+    JWT_SECRET_KEY: str = "setsync_jwt_super_secret_key_change_me_in_prod"
+    JWT_ALGORITHM: str = "HS256"
+    
+    # Request Rate Limiting (Default: 150 requests per 60 seconds sliding window)
+    RATE_LIMIT_WINDOW_SECONDS: int = 60
+    RATE_LIMIT_MAX_REQUESTS: int = 150
     
     # Root scan directories for PC-A and PC-B when simulated locally
     PC_A_ROOT: str = str(Path("./test_pc_a").absolute())

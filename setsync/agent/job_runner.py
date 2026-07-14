@@ -5,6 +5,7 @@ import json
 import traceback
 from agent.config import get_agent_config
 from agent.uploader import get_auth_headers
+from agent.chunked_upload import chunked_upload_file, chunked_download_file
 from app.transfer.delta_sync import (
     generate_block_signatures,
     compute_delta,
@@ -80,12 +81,35 @@ def run_job_loop():
                             else:
                                 serializable_delta.append((op, val))
                                 
-                        # Upload delta
-                        delta_url = f"{core_url.rstrip('/')}/jobs/{job_id}/delta"
+                        # Determine if we should use chunked transfer (e.g. payload > 512KB)
                         payload = {"delta_ops": serializable_delta}
-                        res = requests.post(delta_url, json=payload, headers=headers, timeout=30)
-                        res.raise_for_status()
-                        print(f"  -> Delta ops uploaded successfully.")
+                        json_str = json.dumps(payload)
+                        payload_bytes = json_str.encode("utf-8")
+                        
+                        if len(payload_bytes) >= 512 * 1024:
+                            print(f"  -> Large delta payload ({len(payload_bytes) / 1024:.2f} KB). Using chunked transfer.")
+                            temp_delta_file = os.path.join(root_dir, f".setsync_temp_delta_{job_id}.json")
+                            os.makedirs(os.path.dirname(temp_delta_file), exist_ok=True)
+                            with open(temp_delta_file, "w") as f:
+                                json.dump(payload, f)
+                                
+                            upload_success = chunked_upload_file(
+                                filepath=temp_delta_file,
+                                session_id=job_id,
+                                target_rel_path=f"jobs/{job_id}/delta"
+                            )
+                            if os.path.exists(temp_delta_file):
+                                os.remove(temp_delta_file)
+                                
+                            if not upload_success:
+                                raise RuntimeError("Chunked delta upload failed")
+                            print(f"  -> Chunked delta upload finalized.")
+                        else:
+                            # Standard upload
+                            delta_url = f"{core_url.rstrip('/')}/jobs/{job_id}/delta"
+                            res = requests.post(delta_url, json=payload, headers=headers, timeout=30)
+                            res.raise_for_status()
+                            print(f"  -> Delta ops uploaded successfully.")
                         
                     elif job["destination_id"] == source_id and status == "delta_ready":
                         # 3. We are destination: Fetch delta ops, apply to local file
@@ -94,6 +118,20 @@ def run_job_loop():
                         res = requests.get(delta_url, headers=headers, timeout=30)
                         res.raise_for_status()
                         serialized_delta = res.json()
+                        
+                        # Check if chunked transfer was used
+                        if len(serialized_delta) == 1 and serialized_delta[0][0] == "chunked_transfer":
+                            session_id = serialized_delta[0][1]
+                            print(f"  -> Large transfer detected. Initiating chunked download for session: {session_id}")
+                            temp_delta_file = os.path.join(root_dir, f".setsync_temp_delta_{job_id}.json")
+                            download_success = chunked_download_file(session_id, temp_delta_file)
+                            if not download_success:
+                                raise RuntimeError("Chunked delta download failed")
+                            with open(temp_delta_file, "r") as f:
+                                payload = json.load(f)
+                            serialized_delta = payload.get("delta_ops", [])
+                            if os.path.exists(temp_delta_file):
+                                os.remove(temp_delta_file)
                         
                         # Unserialize hex string data back to bytes
                         delta_ops = []
