@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "setsync-agent"
 version = "1.0.0"
 description = "SetSync Inventory Scanning & Watcher Agent"
-readme = "README.md"
+readme = { text = "SetSync Inventory Scanning & Watcher Agent", content-type = "text/plain" }
 requires-python = ">=3.10"
 dependencies = [
     "click>=8.0.0",
@@ -17,3 +17,7 @@ dependencies = [
 
 [project.scripts]
 setsync-agent = "agent.cli:cli"
+
+[tool.setuptools.packages.find]
+where = [".."]
+include = ["agent*"]

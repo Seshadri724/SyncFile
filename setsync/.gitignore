@@ -7,6 +7,7 @@ ENV/
 **/__pycache__/
 *.py[cod]
 *$py.class
+*.egg-info/
 .pytest_cache/
 .pytest_cache*
 .coverage
@@ -27,6 +28,8 @@ build/
 .eslintcache
 
 # SetSync Local Simulators & Temp Trash
+.setsync_staging/
+**/.setsync_staging/
 .setsync_trash/
 test_pc_a/
 test_pc_b/
